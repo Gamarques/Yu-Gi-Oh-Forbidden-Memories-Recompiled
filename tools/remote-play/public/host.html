@@ -41,6 +41,26 @@
     </section>
 
     <section class="panel">
+      <h2>Camera and voice</h2>
+      <p class="muted">Your friend's camera appears in the game, over the opponent's field. Their voice plays from this page, so keep it open; use headphones, or your microphone sends the game's sound back to them.</p>
+      <button id="camera-toggle" type="button" aria-pressed="false">Camera: off</button>
+      <button id="mic-toggle" type="button" aria-pressed="false">Microphone: off</button>
+      <label>Show your friend's camera in the game
+        <select id="overlay">
+          <option value="my-turn" selected>During your turn</option>
+          <option value="always">Always in a duel</option>
+          <option value="never">Never</option>
+        </select>
+      </label>
+      <div class="cams">
+        <figure><video id="self-cam" muted playsinline></video><figcaption>You</figcaption></figure>
+        <figure><video id="peer-cam" muted playsinline></video><figcaption id="peer-media">Your friend: camera off, microphone off</figcaption></figure>
+      </div>
+      <audio id="peer-voice"></audio>
+      <p class="muted">Duel: <span id="duel">-</span></p>
+    </section>
+
+    <section class="panel">
       <h2>Invite</h2>
       <p class="muted">Send one of these links to your friend. Anyone with the link can join while you share.</p>
       <ul id="invites" class="invites"></ul>

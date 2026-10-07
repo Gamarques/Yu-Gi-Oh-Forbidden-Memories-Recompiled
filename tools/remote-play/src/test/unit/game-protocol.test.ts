@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { encodeMessage, GameMessage, MessageReader, padMessage, presenceMessage, rateMessage } from "../../server/game-protocol.js";
+import {
+  cameraMessage,
+  encodeMessage,
+  GameMessage,
+  MessageReader,
+  OverlayMode,
+  overlayMessage,
+  padMessage,
+  presenceMessage,
+  rateMessage,
+} from "../../server/game-protocol.js";
 
 test("messages split across and within chunks", () => {
   const reader = new MessageReader();
@@ -25,4 +35,9 @@ test("the companion's messages match remote_play.h", () => {
   assert.deepEqual([...padMessage(1, 0x4008)], [16, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0x08, 0x40]);
   assert.deepEqual([...presenceMessage(1, true)], [17, 0, 0, 0, 2, 0, 0, 0, 1, 1]);
   assert.deepEqual([...rateMessage(99)], [18, 0, 0, 0, 1, 0, 0, 0, 60]);
+  assert.deepEqual([...overlayMessage(OverlayMode.Always)], [20, 0, 0, 0, 1, 0, 0, 0, 2]);
+  assert.deepEqual([...cameraMessage(1, 1, Uint8Array.of(0x1f, 0))], [19, 0, 0, 0, 6, 0, 0, 0, 1, 0, 1, 0, 0x1f, 0]);
+  assert.deepEqual([...cameraMessage(0, 0, new Uint8Array(0))], [19, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
+  assert.throws(() => cameraMessage(321, 1, new Uint8Array(642)));
+  assert.throws(() => cameraMessage(2, 2, new Uint8Array(3)));
 });

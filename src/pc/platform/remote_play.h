@@ -21,26 +21,42 @@
  *                        width x height 15-bit pixels as the GPU keeps them
  *                        (red in bits 0-4, green 5-9, blue 10-14)
  *     REMOTE_PLAY_AUDIO  signed 16-bit stereo frames
+ *     REMOTE_PLAY_DUEL   u8 1 while a duel is on screen, u8 the side whose
+ *                        turn it is (0 player 1, 1 player 2); sent on change
  *   companion -> game
  *     REMOTE_PLAY_PAD       u8 port (0 or 1), u8 0, u16 PS1 pad bits
  *                           (active high, as Platform_Pad)
  *     REMOTE_PLAY_PRESENCE  u8 port, u8 1 when a remote player holds it;
  *                           a held port 1 counts as a connected pad, so the
  *                           game offers its two-player duels and trades
- *     REMOTE_PLAY_RATE      u8 n: a picture every n game frames (1-60) */
+ *     REMOTE_PLAY_RATE      u8 n: a picture every n game frames (1-60)
+ *     REMOTE_PLAY_CAMERA    u16 width, u16 height (at most 320x240; 0x0 for
+ *                           none), then 15-bit pixels as above: the remote
+ *                           player's camera, which the window shows over the
+ *                           opponent's field (remote_play_overlay.c)
+ *     REMOTE_PLAY_OVERLAY   u8 when the window shows that camera: 0 never,
+ *                           1 in a duel during player 1's turn (the
+ *                           default: while you prepare your move, you see
+ *                           who you play against), 2 always in a duel */
 #include <stddef.h>
 #include <stdint.h>
 
 #define REMOTE_PLAY_DEFAULT_PORT 47811
-#define REMOTE_PLAY_PROTOCOL 1
+#define REMOTE_PLAY_PROTOCOL 2
+#define REMOTE_PLAY_CAMERA_MAX_W 320
+#define REMOTE_PLAY_CAMERA_MAX_H 240
 enum {
     REMOTE_PLAY_HELLO = 1,
     REMOTE_PLAY_VIDEO = 2,
     REMOTE_PLAY_AUDIO = 3,
+    REMOTE_PLAY_DUEL = 4,
     REMOTE_PLAY_PAD = 16,
     REMOTE_PLAY_PRESENCE = 17,
-    REMOTE_PLAY_RATE = 18
+    REMOTE_PLAY_RATE = 18,
+    REMOTE_PLAY_CAMERA = 19,
+    REMOTE_PLAY_OVERLAY = 20
 };
+enum { REMOTE_PLAY_OVERLAY_NEVER, REMOTE_PLAY_OVERLAY_MY_TURN, REMOTE_PLAY_OVERLAY_ALWAYS };
 
 /* Whether MEMORIES_REMOTE_PLAY asks for the bridge. */
 int RemotePlay_Enabled(void);
@@ -56,6 +72,13 @@ void RemotePlay_Audio(const int16_t *frames, size_t count);
  * Async-signal-safe: they only read words RemotePlay_Frame writes. */
 uint16_t RemotePlay_Pad(int port);
 int RemotePlay_PadConnected(int port);
+/* Main thread, before RemotePlay_Frame: whether a duel is on screen and
+ * whose turn it is, which the companion passes on to the pages. */
+void RemotePlay_SetDuel(int in_duel, int turn);
+/* The remote player's camera when the window should show it now (a duel,
+ * the turn the overlay setting asks for, a picture newer than two seconds),
+ * else NULL. `serial` changes with every new picture. Main thread. */
+const uint16_t *RemotePlay_Camera(int *width, int *height, unsigned *serial);
 /* Close the sockets (tests; the game just exits). */
 void RemotePlay_Shutdown(void);
 #endif

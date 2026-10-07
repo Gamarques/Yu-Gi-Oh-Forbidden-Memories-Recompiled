@@ -30,6 +30,9 @@ async function launch(): Promise<Browser> {
       // Plain local addresses in ICE candidates, so two pages on one
       // machine (or container) find each other without mDNS.
       "--disable-features=WebRtcHideLocalIpsWithMdns",
+      // A fake camera and microphone, allowed without asking.
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
     ],
   });
 }
@@ -100,6 +103,61 @@ async function main(): Promise<void> {
     assert.equal(game.bits[0], 0, "port 1 untouched");
     await until("a round trip time", async () => /\d+ ms/.test((await guest.textContent("#rtt")) ?? ""));
     console.log(`ok: keys reach port 2 over the data channel (round trip ${await guest.textContent("#rtt")})`);
+
+    // Camera and voice. The guest's camera reaches the game's window (the
+    // host page sends it to the companion as small 15-bit pictures), and
+    // their voice plays on the host page.
+    await guest.click("#camera-toggle");
+    await guest.click("#mic-toggle");
+    await until("the host sees the guest's media", async () =>
+      (await host.textContent("#peer-media")) === "Your friend: camera on, microphone on",
+    );
+    await until("the guest's camera in the game", () => game.cameraFrames > 3);
+    assert.deepEqual(game.camera, { width: 160, height: 120 });
+    await until("the guest's voice at the host", () =>
+      host.evaluate(() => {
+        const track = (document.querySelector<HTMLAudioElement>("#peer-voice")!.srcObject as MediaStream | null)?.getAudioTracks()[0];
+        return !!track && track.readyState === "live" && !track.muted;
+      }),
+    );
+    await host.selectOption("#overlay", "always");
+    await until("the overlay setting in the game", () => game.overlayMode === 2);
+    await host.selectOption("#overlay", "my-turn");
+    await until("back to my turn", () => game.overlayMode === 1);
+    console.log("ok: the guest's camera reaches the game, their voice the host");
+
+    // The host's camera, over the opponent's field on the guest page during
+    // the guest's own turn (player 2's), and their voice.
+    await host.click("#camera-toggle");
+    await host.click("#mic-toggle");
+    const peerCamShown = () =>
+      guest.evaluate(() => {
+        const cam = document.querySelector<HTMLVideoElement>("#peer-cam")!;
+        return !cam.hidden && cam.videoWidth > 0;
+      });
+    game.setDuel(true, 0); // the host's turn: the guest does not see it
+    await until("the host's camera arrives", () =>
+      guest.evaluate(() => document.querySelector<HTMLVideoElement>("#peer-cam")!.videoWidth > 0),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(await peerCamShown(), false, "hidden during the host's turn");
+    game.setDuel(true, 1); // the guest's turn
+    await until("the host's camera on the guest's turn", peerCamShown);
+    game.setDuel(false, 1); // out of the duel
+    await until("hidden out of a duel", async () => !(await peerCamShown()));
+    game.setDuel(true, 0);
+    await guest.selectOption("#overlay", "always");
+    await until("always shown in a duel", peerCamShown);
+    await until("the host's voice at the guest", () =>
+      guest.evaluate(() => {
+        const track = (document.querySelector<HTMLAudioElement>("#peer-voice")!.srcObject as MediaStream | null)?.getAudioTracks()[0];
+        return !!track && track.readyState === "live" && !track.muted;
+      }),
+    );
+    // The guest turns their camera off: the game's window lets it go.
+    await guest.click("#camera-toggle");
+    await until("the camera gone from the game", () => game.camera.width === 0);
+    console.log("ok: the host's camera shows over the field on the guest's turn, and their voice plays");
 
     // The on-screen pad (phones) presses buttons too.
     const pressed: number[] = [];

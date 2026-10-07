@@ -33,6 +33,10 @@ typedef int Socket;
 /* About three quarters of a second of stereo sound, a power of two. */
 #define RING_FRAMES 32768u
 #define MAX_RATE 60
+/* The largest message the companion sends: a camera picture. */
+#define IN_BYTES (HEADER_BYTES + 4 + REMOTE_PLAY_CAMERA_MAX_W * REMOTE_PLAY_CAMERA_MAX_H * 2)
+/* A camera picture older than this many game frames (two seconds) is not shown. */
+#define CAMERA_STALE_FRAMES 120u
 
 static int enabled = -1, port_number, failed;
 static Socket listener = NO_SOCKET, client = NO_SOCKET;
@@ -43,8 +47,15 @@ static unsigned frames_seen;
 
 static unsigned char *out;
 static size_t out_length, out_sent, out_capacity;
-static unsigned char in[64];
+static unsigned char in[IN_BYTES];
 static size_t in_length;
+
+/* The duel as the game last reported it, and as the companion was told. */
+static int duel_on, duel_turn, sent_duel = -1;
+/* The remote player's camera. */
+static uint16_t camera[REMOTE_PLAY_CAMERA_MAX_W * REMOTE_PLAY_CAMERA_MAX_H];
+static int camera_w, camera_h, overlay_mode = REMOTE_PLAY_OVERLAY_MY_TURN;
+static unsigned camera_serial, camera_frame;
 
 /* Sound: the audio thread writes, the main thread reads. */
 static int16_t ring[RING_FRAMES * 2];
@@ -153,6 +164,9 @@ static void drop_client(const char *why)
         remote_present[port] = 0;
     }
     out_length = out_sent = in_length = 0;
+    camera_w = camera_h = 0;
+    sent_duel = -1;
+    overlay_mode = REMOTE_PLAY_OVERLAY_MY_TURN;
     fprintf(stderr, "memories-pc: remote play: companion left (%s)\n", why);
 }
 
@@ -196,6 +210,21 @@ static void handle_message(const unsigned char *message, const unsigned char *pa
         break;
     case REMOTE_PLAY_RATE:
         if (length >= 1 && payload[0] >= 1 && payload[0] <= MAX_RATE) frame_divisor = payload[0];
+        break;
+    case REMOTE_PLAY_CAMERA: {
+        unsigned w = length >= 4 ? (unsigned)(payload[0] | payload[1] << 8) : 0;
+        unsigned h = length >= 4 ? (unsigned)(payload[2] | payload[3] << 8) : 0;
+        unsigned i;
+        if (w > REMOTE_PLAY_CAMERA_MAX_W || h > REMOTE_PLAY_CAMERA_MAX_H || length < 4 + w * h * 2) break;
+        for (i = 0; i < w * h; i++) camera[i] = (uint16_t)((payload[4 + i * 2] | payload[5 + i * 2] << 8) & 0x7fff);
+        camera_w = (int)w;
+        camera_h = (int)h;
+        camera_serial++;
+        camera_frame = frames_seen;
+        break;
+    }
+    case REMOTE_PLAY_OVERLAY:
+        if (length >= 1 && payload[0] <= REMOTE_PLAY_OVERLAY_ALWAYS) overlay_mode = payload[0];
         break;
     default:
         break; /* a later companion's message: skipped */
@@ -301,6 +330,14 @@ void RemotePlay_Frame(const uint16_t *vram, int stride, int x, int y, int w, int
     flush_output();
     /* Still sending the last picture: this one is dropped, the sound waits. */
     if (client == NO_SOCKET || out_length) return;
+    if (duel_on * 2 + duel_turn != sent_duel) {
+        unsigned char *duel = begin_message(REMOTE_PLAY_DUEL, 2);
+        if (duel) {
+            duel[0] = (unsigned char)duel_on;
+            duel[1] = (unsigned char)duel_turn;
+            sent_duel = duel_on * 2 + duel_turn;
+        }
+    }
     queue_audio();
     if (vram && frames_seen % (unsigned)frame_divisor == 0) queue_picture(vram, stride, x, y, w, h, rgb24);
     flush_output();
@@ -319,6 +356,24 @@ void RemotePlay_Audio(const int16_t *frames, size_t count)
     memcpy(ring + index * 2, frames, (size_t)first * 4);
     memcpy(ring, frames + first * 2, (count - first) * 4);
     __atomic_store_n(&ring_head, head + (unsigned)count, __ATOMIC_RELEASE);
+}
+
+void RemotePlay_SetDuel(int in_duel, int turn)
+{
+    duel_on = in_duel != 0;
+    duel_turn = in_duel && turn ? 1 : 0;
+}
+
+const uint16_t *RemotePlay_Camera(int *width, int *height, unsigned *serial)
+{
+    int shown = client != NO_SOCKET && camera_w > 0 && camera_h > 0 && duel_on &&
+                frames_seen - camera_frame <= CAMERA_STALE_FRAMES &&
+                (overlay_mode == REMOTE_PLAY_OVERLAY_ALWAYS || (overlay_mode == REMOTE_PLAY_OVERLAY_MY_TURN && duel_turn == 0));
+    if (!shown) return NULL;
+    *width = camera_w;
+    *height = camera_h;
+    *serial = camera_serial;
+    return camera;
 }
 
 uint16_t RemotePlay_Pad(int port)
@@ -342,4 +397,5 @@ void RemotePlay_Shutdown(void)
     enabled = -1;
     failed = 0;
     frames_seen = 0;
+    duel_on = duel_turn = 0;
 }

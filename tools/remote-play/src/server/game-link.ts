@@ -4,8 +4,11 @@
 import { EventEmitter } from "node:events";
 import net from "node:net";
 import {
+  cameraMessage,
   GameMessage,
   MessageReader,
+  OverlayMode,
+  overlayMessage,
   padMessage,
   presenceMessage,
   rateMessage,
@@ -25,6 +28,7 @@ export interface GameLinkEvents {
   disconnected: [];
   video: [VideoFrame];
   audio: [Buffer];
+  duel: [inDuel: boolean, turn: 0 | 1];
 }
 
 export class GameLink extends EventEmitter<GameLinkEvents> {
@@ -35,6 +39,8 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
   private readonly bits: [number, number] = [0, 0];
   private readonly present: [boolean, boolean] = [false, false];
   private divisor = 2;
+  private overlay: OverlayMode = OverlayMode.MyTurn;
+  private protocol = 0;
 
   constructor(
     private readonly port: number,
@@ -80,6 +86,23 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
     this.send(rateMessage(divisor));
   }
 
+  // Whether the running game takes a camera (protocol 2 and later).
+  get supportsCamera(): boolean {
+    return this.ready && this.protocol >= 2;
+  }
+
+  // The remote player's camera, for the game's window; 0x0 for none.
+  // Dropped while the game is still taking the last one.
+  setCamera(width: number, height: number, pixels: Uint8Array): void {
+    if (!this.supportsCamera || !this.socket || this.socket.writableLength > 1 << 20) return;
+    this.socket.write(cameraMessage(width, height, pixels));
+  }
+
+  setOverlay(mode: OverlayMode): void {
+    this.overlay = mode;
+    if (this.supportsCamera) this.send(overlayMessage(mode));
+  }
+
   private send(message: Buffer): void {
     if (this.ready && this.socket) this.socket.write(message);
   }
@@ -115,6 +138,8 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
       case GameMessage.Hello: {
         if (payload.length < 8) return;
         this.ready = true;
+        this.protocol = payload.readUInt32LE(0);
+        if (this.protocol >= 2) this.send(overlayMessage(this.overlay));
         // The game starts every companion afresh: tell it where we are.
         this.send(rateMessage(this.divisor));
         for (const port of [0, 1] as const) {
@@ -135,6 +160,9 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
         break;
       case GameMessage.Audio:
         this.emit("audio", payload);
+        break;
+      case GameMessage.Duel:
+        if (payload.length >= 2) this.emit("duel", payload[0] !== 0, payload[1] ? 1 : 0);
         break;
       default:
         break; // a later game's message

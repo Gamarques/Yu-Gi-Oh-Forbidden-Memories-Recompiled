@@ -4,7 +4,15 @@
 // player the host gave the guest (2 by default). If no
 // direct connection comes up in time, or the link has "?relay", it asks for
 // the relay: JPEG pictures and pad bits through the WebSocket instead.
-import { StreamKind, type GuestToServer, type ServerToGuest, type SignalData } from "../shared/messages.js";
+import {
+  StreamKind,
+  type CameraOverlay,
+  type DuelState,
+  type GuestToServer,
+  type MediaState,
+  type ServerToGuest,
+  type SignalData,
+} from "../shared/messages.js";
 import {
   ChannelMessage,
   decodeChannel,
@@ -16,6 +24,7 @@ import {
   KEYBOARD,
   keyboardBits,
 } from "../shared/pad.js";
+import { cameraShown, limitCameraBitrate, LocalMedia, mediaAvailable, Section, sectionOf, setButton } from "./media.js";
 
 const CONNECT_TIMEOUT_MS = 12000;
 const RELAY_PAD_REPEAT_MS = 1000;
@@ -34,6 +43,11 @@ let relay = false;
 let connectTimer: number | null = null;
 let relayUrl: string | null = null;
 let sequence = 0;
+let myPort = 1;
+let duel: DuelState = { inDuel: false, turn: 0 };
+let hostMedia: MediaState = { camera: false, mic: false };
+const local = new LocalMedia();
+const peerCam = $<HTMLVideoElement>("peer-cam");
 let sentBits = -1;
 let sentAt = 0;
 const held = new Set<string>();
@@ -52,7 +66,41 @@ function transport(text: string, state: "on" | "off" | "wait" | "bad"): void {
 
 const send = (message: GuestToServer) => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(message));
 
+// --- camera and voice ---
+
+// The host's camera over the opponent's field: when the host has it on and
+// the duel and the viewer's choice say so.
+function showPeerCamera(): void {
+  const overlay = $<HTMLSelectElement>("overlay").value as CameraOverlay;
+  peerCam.hidden = relay || !hostMedia.camera || !cameraShown(overlay, duel, myPort);
+}
+
+function showMedia(): void {
+  setButton($<HTMLButtonElement>("camera-toggle"), !!local.camera, "Camera");
+  setButton($<HTMLButtonElement>("mic-toggle"), !!local.mic, "Microphone");
+  showPeerCamera();
+}
+
+async function toggle(which: "camera" | "mic"): Promise<void> {
+  try {
+    if (which === "camera") await local.toggleCamera();
+    else await local.toggleMic();
+  } catch (error) {
+    $("media-note").textContent = `No ${which === "camera" ? "camera" : "microphone"}: ${(error as Error).message}`;
+  }
+  if (peer) await local.attach(peer);
+  send({ type: "media", ...local.state });
+  showMedia();
+}
+
+function playPeer(element: HTMLMediaElement, track: MediaStreamTrack): void {
+  element.srcObject = new MediaStream([track]);
+  void element.play().catch(() => undefined);
+}
+
 function showPlayer(port: number): void {
+  myPort = port;
+  showPeerCamera();
   $("player").textContent = `player ${port + 1}`;
   $("player-hint").textContent =
     port === 1
@@ -95,11 +143,20 @@ function onMessage(data: ArrayBuffer | string): void {
       $("play").hidden = false;
       status("Joined. Waiting for the host's picture...");
       transport("Connecting", "wait");
+      send({ type: "media", ...local.state });
       if (forceRelay) startRelay();
       else connectTimer = window.setTimeout(() => startRelay(), CONNECT_TIMEOUT_MS);
       break;
     case "player":
       showPlayer(message.port);
+      break;
+    case "duel":
+      duel = { inDuel: message.inDuel, turn: message.turn };
+      showPeerCamera();
+      break;
+    case "peer-media":
+      hostMedia = { camera: message.camera, mic: message.mic };
+      showPeerCamera();
       break;
     case "rejected":
       status(message.reason);
@@ -129,6 +186,9 @@ function leave(why: string | null): void {
   peer = null;
   relay = false;
   video.srcObject = null;
+  peerCam.srcObject = null;
+  peerCam.hidden = true;
+  $<HTMLAudioElement>("peer-voice").srcObject = null;
   if (relayUrl) URL.revokeObjectURL(relayUrl);
   relayUrl = null;
   $("play").hidden = true;
@@ -147,7 +207,10 @@ async function onSignal(data: SignalData): Promise<void> {
       const connection = new RTCPeerConnection({ iceServers });
       peer = connection;
       connection.ontrack = (event) => {
-        if (video.srcObject !== event.streams[0]) {
+        const section = sectionOf(connection, event.transceiver);
+        if (section === Section.Voice) return playPeer($<HTMLAudioElement>("peer-voice"), event.track);
+        if (section === Section.Camera) return playPeer(peerCam, event.track);
+        if (event.streams[0] && video.srcObject !== event.streams[0]) {
           video.srcObject = event.streams[0] ?? null;
           video.muted = false;
           void video.play().catch(() => {
@@ -177,9 +240,16 @@ async function onSignal(data: SignalData): Promise<void> {
         }
       };
       await connection.setRemoteDescription(data.description);
+      // Voice and camera go both ways (media.ts): send ours, now or later.
+      for (const section of [Section.Voice, Section.Camera]) {
+        const transceiver = connection.getTransceivers()[section];
+        if (transceiver) transceiver.direction = "sendrecv";
+      }
+      await local.attach(connection);
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       send({ type: "signal", data: { description: connection.localDescription!.toJSON() } });
+      await limitCameraBitrate(connection);
     } else if (data.candidate && peer) {
       await peer.addIceCandidate(data.candidate);
     }
@@ -204,6 +274,7 @@ function startRelay(): void {
   video.hidden = true;
   relayView.hidden = false;
   transport("Relay (no sound)", "wait");
+  showPeerCamera();
   status("Playing through the relay: no direct connection could be made.");
 }
 
@@ -212,6 +283,7 @@ function stopRelay(): void {
   send({ type: "relay", on: false });
   video.hidden = false;
   relayView.hidden = true;
+  showPeerCamera();
 }
 
 function showRelayPicture(data: ArrayBuffer): void {
@@ -308,6 +380,14 @@ function setupTouchPad(): void {
 }
 
 setupTouchPad();
+$<HTMLButtonElement>("camera-toggle").addEventListener("click", () => void toggle("camera"));
+$<HTMLButtonElement>("mic-toggle").addEventListener("click", () => void toggle("mic"));
+$<HTMLSelectElement>("overlay").addEventListener("change", showPeerCamera);
+if (!mediaAvailable()) {
+  for (const id of ["camera-toggle", "mic-toggle"]) $<HTMLButtonElement>(id).disabled = true;
+  $("media-note").textContent =
+    "Camera and microphone need the https link (the host's tunnel invite); this one is plain http.";
+}
 $<HTMLFormElement>("join-form").addEventListener("submit", join);
 $<HTMLButtonElement>("leave").addEventListener("click", () => leave("You left the game."));
 $<HTMLButtonElement>("fullscreen").addEventListener("click", () => void $("screen-box").requestFullscreen?.());

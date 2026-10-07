@@ -305,7 +305,14 @@ void Memories_PresentDisplay(void)
     Credits_Frame();
     frame_hash();
     /* MEMORIES_REMOTE_PLAY: the picture at the console's resolution and the
-     * pad bits of a remote player (remote_play.h), headless too. */
+     * pad bits of a remote player (remote_play.h), headless too; and whether
+     * a duel is on screen (not its 3D battle) and whose turn it is, for the
+     * remote player's camera. */
+    if (RemotePlay_Enabled()) {
+        extern unsigned char D_8009B26C; /* main_mode_state.h: the active mode */
+        extern unsigned char D_8009B1D5; /* duel_side_state.h: the side whose turn it is */
+        RemotePlay_SetDuel((D_8009B26C & 0x3f) == 3 /* MAIN_MODE_DUEL, not its animated battle */, D_8009B1D5 & 1);
+    }
     RemotePlay_Frame(SoftGpu_Vram(), SOFT_GPU_WIDTH, disp_env.disp.x, disp_env.disp.y, w, h, disp_env.isrgb24);
     {
         /* MEMORIES_WINDOW_SHOT=<frame>: the window as shown at that frame,

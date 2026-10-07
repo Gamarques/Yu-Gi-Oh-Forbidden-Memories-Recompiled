@@ -4,14 +4,27 @@
 // one WebRTC stream; player 2's pad comes back on a data channel. When no
 // direct connection can be made, it sends JPEG pictures through the
 // companion instead (the relay).
-import { StreamKind, type HostToServer, type ServerToHost, type SignalData } from "../shared/messages.js";
+import {
+  StreamKind,
+  type CameraOverlay,
+  type DuelState,
+  type HostToServer,
+  type MediaState,
+  type ServerToHost,
+  type SignalData,
+} from "../shared/messages.js";
 import { ChannelMessage, decodeChannel, describeBits, encodePing, isNewer } from "../shared/pad.js";
+import { LocalMedia, limitCameraBitrate, Section, sectionOf, setButton } from "./media.js";
 
 const OUT_WIDTH = 640;
 const OUT_HEIGHT = 480;
 const VIDEO_BITRATE = 3_000_000;
 const RELAY_FPS = 15;
 const RELAY_QUALITY = 0.7;
+// The friend's camera as the game's window gets it: small, 15 a second.
+const CAMERA_WIDTH = 160;
+const CAMERA_HEIGHT = 120;
+const CAMERA_FPS = 15;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const screen = $<HTMLCanvasElement>("screen");
@@ -30,6 +43,13 @@ let relayTimer: number | null = null;
 let lastSequence = -1;
 let lastBits = 0;
 let framesIn = 0;
+const local = new LocalMedia();
+let peerMedia: MediaState = { camera: false, mic: false };
+let duel: DuelState = { inDuel: false, turn: 0 };
+const cameraCanvas = document.createElement("canvas");
+cameraCanvas.width = CAMERA_WIDTH;
+cameraCanvas.height = CAMERA_HEIGHT;
+const cameraContext = cameraCanvas.getContext("2d", { willReadFrequently: true })!;
 let lastBytesSent = 0;
 let lastStatsAt = 0;
 
@@ -96,6 +116,7 @@ async function startSharing(): Promise<void> {
     const destination = audio.createMediaStreamDestination();
     audioNode.connect(destination);
     stream = screen.captureStream(60);
+    for (const track of stream.getVideoTracks()) track.contentHint = "detail";
     for (const track of destination.stream.getAudioTracks()) stream.addTrack(track);
     button.textContent = "Sharing";
     chip("share-status", "Sharing: on", "on");
@@ -128,7 +149,17 @@ async function connectGuest(): Promise<void> {
   closePeer();
   const connection = new RTCPeerConnection({ iceServers });
   peer = connection;
-  for (const track of stream.getTracks()) connection.addTrack(track, stream);
+  // The four sections, in the order media.ts describes.
+  connection.addTransceiver(stream.getVideoTracks()[0]!, { direction: "sendonly", streams: [stream] });
+  connection.addTransceiver(stream.getAudioTracks()[0]!, { direction: "sendonly", streams: [stream] });
+  connection.addTransceiver("audio", { direction: "sendrecv" });
+  connection.addTransceiver("video", { direction: "sendrecv" });
+  await local.attach(connection);
+  connection.ontrack = (event) => {
+    const section = sectionOf(connection, event.transceiver);
+    if (section === Section.Voice) playPeer($<HTMLAudioElement>("peer-voice"), event.track);
+    else if (section === Section.Camera) playPeer($<HTMLVideoElement>("peer-cam"), event.track);
+  };
   const input = connection.createDataChannel("input", { ordered: false, maxRetransmits: 0 });
   input.binaryType = "arraybuffer";
   input.onmessage = (event: MessageEvent<ArrayBuffer>) => onChannel(event.data);
@@ -143,12 +174,14 @@ async function connectGuest(): Promise<void> {
   const offer = await connection.createOffer();
   await connection.setLocalDescription(offer);
   send({ type: "signal", data: { description: connection.localDescription!.toJSON() } });
-  for (const sender of connection.getSenders()) {
-    if (sender.track?.kind !== "video") continue;
+  await limitCameraBitrate(connection);
+  {
+    const sender = connection.getTransceivers()[Section.GameVideo]!.sender;
     const parameters = sender.getParameters();
     if (!parameters.encodings?.length) parameters.encodings = [{}];
     parameters.encodings[0]!.maxBitrate = VIDEO_BITRATE;
-    parameters.degradationPreference = "maintain-framerate";
+    // A card game: sharp text and cards matter more than every frame.
+    parameters.degradationPreference = "maintain-resolution";
     await sender.setParameters(parameters).catch(() => undefined);
   }
 }
@@ -161,6 +194,62 @@ async function onSignal(data: SignalData): Promise<void> {
   } catch (error) {
     console.warn("signal", error);
   }
+}
+
+function playPeer(element: HTMLMediaElement, track: MediaStreamTrack): void {
+  element.srcObject = new MediaStream([track]);
+  void element.play().catch(() => undefined);
+}
+
+// --- camera and voice ---
+
+function showMedia(): void {
+  setButton($<HTMLButtonElement>("camera-toggle"), !!local.camera, "Camera");
+  setButton($<HTMLButtonElement>("mic-toggle"), !!local.mic, "Microphone");
+  const self = $<HTMLVideoElement>("self-cam");
+  self.srcObject = local.camera ? new MediaStream([local.camera]) : null;
+  if (local.camera) void self.play().catch(() => undefined);
+  $("peer-media").textContent =
+    `Your friend: camera ${peerMedia.camera ? "on" : "off"}, microphone ${peerMedia.mic ? "on" : "off"}`;
+}
+
+async function toggle(which: "camera" | "mic"): Promise<void> {
+  try {
+    if (which === "camera") await local.toggleCamera();
+    else await local.toggleMic();
+  } catch (error) {
+    hint(`No ${which === "camera" ? "camera" : "microphone"}: ${(error as Error).message}`);
+  }
+  if (peer) await local.attach(peer);
+  send({ type: "media", ...local.state });
+  showMedia();
+}
+
+// The friend's camera, small and in the game's own 15-bit colour, to the
+// companion, which hands it to the game's window.
+function sendCameraFrame(): void {
+  const video = $<HTMLVideoElement>("peer-cam");
+  if (!peerMedia.camera || !video.videoWidth || socket.bufferedAmount > 256 << 10) return;
+  // Cover: crop the camera's picture to 4:3 rather than squeeze it.
+  const scale = Math.max(CAMERA_WIDTH / video.videoWidth, CAMERA_HEIGHT / video.videoHeight);
+  const w = video.videoWidth * scale;
+  const h = video.videoHeight * scale;
+  cameraContext.drawImage(video, (CAMERA_WIDTH - w) / 2, (CAMERA_HEIGHT - h) / 2, w, h);
+  const rgba = cameraContext.getImageData(0, 0, CAMERA_WIDTH, CAMERA_HEIGHT).data;
+  const message = new Uint8Array(5 + CAMERA_WIDTH * CAMERA_HEIGHT * 2);
+  const view = new DataView(message.buffer);
+  view.setUint8(0, StreamKind.CameraFrame);
+  view.setUint16(1, CAMERA_WIDTH, true);
+  view.setUint16(3, CAMERA_HEIGHT, true);
+  for (let i = 0; i < CAMERA_WIDTH * CAMERA_HEIGHT; i++) {
+    const pixel = (rgba[i * 4]! >> 3) | ((rgba[i * 4 + 1]! >> 3) << 5) | ((rgba[i * 4 + 2]! >> 3) << 10);
+    view.setUint16(5 + i * 2, pixel, true);
+  }
+  socket.send(message);
+}
+
+function showDuel(): void {
+  $("duel").textContent = !duel.inDuel ? "not in a duel" : duel.turn === 0 ? "your turn (player 1)" : "player 2's turn";
 }
 
 function showPad(bits: number): void {
@@ -273,6 +362,10 @@ socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
       break;
     case "guest-left":
       guestName = null;
+      peerMedia = { camera: false, mic: false };
+      $<HTMLVideoElement>("peer-cam").srcObject = null;
+      $<HTMLAudioElement>("peer-voice").srcObject = null;
+      showMedia();
       closePeer();
       chip("guest-status", "Friend: nobody", "off");
       $<HTMLButtonElement>("kick").disabled = true;
@@ -289,8 +382,17 @@ socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
     case "guest-pad":
       showPad(message.bits);
       break;
+    case "peer-media":
+      peerMedia = { camera: message.camera, mic: message.mic };
+      showMedia();
+      break;
+    case "duel":
+      duel = { inDuel: message.inDuel, turn: message.turn };
+      showDuel();
+      break;
   }
 };
+socket.onopen = () => send({ type: "overlay", mode: $<HTMLSelectElement>("overlay").value as CameraOverlay });
 socket.onclose = () => {
   chip("game-status", "Companion stopped", "bad");
   hint("The companion is not running any more: start it again and reload this page.");
@@ -332,6 +434,12 @@ $<HTMLButtonElement>("kick").addEventListener("click", () => send({ type: "kick"
 $<HTMLSelectElement>("rate").addEventListener("change", (event) =>
   send({ type: "rate", divisor: Number((event.target as HTMLSelectElement).value) }),
 );
+$<HTMLButtonElement>("camera-toggle").addEventListener("click", () => void toggle("camera"));
+$<HTMLButtonElement>("mic-toggle").addEventListener("click", () => void toggle("mic"));
+$<HTMLSelectElement>("overlay").addEventListener("change", (event) =>
+  send({ type: "overlay", mode: (event.target as HTMLSelectElement).value as CameraOverlay }),
+);
+setInterval(sendCameraFrame, 1000 / CAMERA_FPS);
 $<HTMLSelectElement>("guest-port").addEventListener("change", (event) =>
   send({ type: "guest-port", port: (event.target as HTMLSelectElement).value === "0" ? 0 : 1 }),
 );

@@ -197,6 +197,53 @@ test("the host chooses which player the guest is", async () => {
   await once(host, "close");
 });
 
+test("the duel, cameras and microphones are passed on", async () => {
+  const host = await hostSocket();
+  const guest = await guestSocket();
+  game.setDuel(true, 0);
+  guest.send(JSON.stringify({ type: "join", token: companion.token, name: "Mai" }));
+  await next(guest, "joined");
+  // The duel as the game reports it, to both pages.
+  game.setDuel(true, 1);
+  await until(() => inbox.get(guest)!.some((m) => m.type === "duel" && m.inDuel === true && m.turn === 1));
+  await until(() => inbox.get(host)!.some((m) => m.type === "duel" && m.inDuel === true && m.turn === 1));
+
+  // Each side's camera and microphone state reaches the other.
+  guest.send(JSON.stringify({ type: "media", camera: true, mic: false }));
+  await until(() => inbox.get(host)!.some((m) => m.type === "peer-media" && m.camera === true && m.mic === false));
+  host.send(JSON.stringify({ type: "media", camera: false, mic: true }));
+  await until(() => inbox.get(guest)!.some((m) => m.type === "peer-media" && m.camera === false && m.mic === true));
+
+  // The guest's camera, as the host page sends it, reaches the game; a
+  // picture of the wrong size does not.
+  const before = game.cameraFrames;
+  const picture = Buffer.alloc(5 + 160 * 120 * 2);
+  picture.writeUInt8(5, 0);
+  picture.writeUInt16LE(160, 1);
+  picture.writeUInt16LE(120, 3);
+  host.send(picture);
+  await until(() => game.cameraFrames === before + 1);
+  assert.deepEqual(game.camera, { width: 160, height: 120 });
+  host.send(picture.subarray(0, 100));
+  host.send(JSON.stringify({ type: "overlay", mode: "always" }));
+  await until(() => game.overlayMode === 2);
+  assert.equal(game.cameraFrames, before + 1);
+  host.send(JSON.stringify({ type: "overlay", mode: "my-turn" }));
+  await until(() => game.overlayMode === 1);
+
+  // The guest's camera off, or the guest gone: the game lets the picture go.
+  guest.send(JSON.stringify({ type: "media", camera: false, mic: false }));
+  await until(() => game.camera.width === 0);
+  host.send(picture);
+  await until(() => game.camera.width === 160);
+  guest.close();
+  await next(host, "guest-left");
+  await until(() => game.camera.width === 0);
+  game.setDuel(true, 0);
+  host.close();
+  await once(host, "close");
+});
+
 test("the host can remove player 2", async () => {
   const host = await hostSocket();
   const guest = await guestSocket();

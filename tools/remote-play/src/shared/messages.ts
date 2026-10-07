@@ -3,6 +3,24 @@
 // which reaches every screen of the game.
 export type GamePort = 0 | 1;
 
+// The duel as the game reports it: whether one is on screen, and the side
+// whose turn it is (0 player 1, 1 player 2).
+export interface DuelState {
+  inDuel: boolean;
+  turn: GamePort;
+}
+
+// Whether a side has its camera and microphone on.
+export interface MediaState {
+  camera: boolean;
+  mic: boolean;
+}
+
+// When a page shows the other side's camera over the opponent's field: in
+// a duel during the viewer's own turn (while they prepare their move), in
+// a duel always, or never. The game's window takes the same choice.
+export type CameraOverlay = "my-turn" | "always" | "never";
+
 // JSON messages on the two WebSockets. Binary messages on the host socket
 // carry the game's own payloads behind a one-byte kind (StreamKind).
 
@@ -22,6 +40,8 @@ export type ServerToHost =
       guestPort: GamePort;
     }
   | { type: "game"; connected: boolean; protocol?: number; audioRate?: number }
+  | ({ type: "duel" } & DuelState)
+  | ({ type: "peer-media" } & MediaState)
   | { type: "guest-joined"; name: string }
   | { type: "guest-left" }
   | { type: "relay"; on: boolean }
@@ -34,12 +54,15 @@ export type HostToServer =
   | { type: "pad"; bits: number } // from the data channel, for the guest's port
   | { type: "rate"; divisor: number }
   | { type: "guest-port"; port: GamePort } // which pad the guest holds
+  | ({ type: "media" } & MediaState) // the host's camera and microphone
+  | { type: "overlay"; mode: CameraOverlay } // the game window's camera
   | { type: "kick" };
 
 export const enum StreamKind {
   Video = 2, // u16 width, u16 height, u32 frame, width*height RGB555
   Audio = 3, // s16 stereo frames
   RelayFrame = 4, // host -> server -> guest: a JPEG picture
+  CameraFrame = 5, // host -> server -> game: u16 width, u16 height, RGB555 (the guest's camera)
 }
 
 // --- the guest page (public, behind the invite link) ---
@@ -47,11 +70,14 @@ export type GuestToServer =
   | { type: "join"; token: string; name: string }
   | { type: "signal"; data: SignalData }
   | { type: "pad"; bits: number } // relay mode, or before the data channel opens
-  | { type: "relay"; on: boolean };
+  | { type: "relay"; on: boolean }
+  | ({ type: "media" } & MediaState); // the guest's camera and microphone
 
 export type ServerToGuest =
   | { type: "joined"; iceServers: RTCIceServer[]; port: GamePort }
   | { type: "player"; port: GamePort }
+  | ({ type: "duel" } & DuelState)
+  | ({ type: "peer-media" } & MediaState)
   | { type: "rejected"; reason: string }
   | { type: "signal"; data: SignalData }
   | { type: "host-left" }

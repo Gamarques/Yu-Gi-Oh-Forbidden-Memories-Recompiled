@@ -7,6 +7,7 @@
 #include "pc/mods/mods.h"
 #include "pc/guest/state.h"
 #include "pc/platform/platform.h"
+#include "pc/platform/remote_play_overlay.h"
 #include "pc/platform/settings.h"
 #include "pc/platform/title_screen.h"
 #include "pc/saves/deck_menu.h"
@@ -123,7 +124,8 @@ static void cover(int x, int y, int w, int h)
 }
 
 /* The statistics, the fusion helper, duel rank and Free Duel progress, the
- * mods' overlays, then the save slot or deck menu over them. */
+ * remote player's camera, the mods' overlays, then the save slot or deck
+ * menu over them. */
 void Hud_Draw(MenuCanvas *canvas)
 {
     int x, y, w, h;
@@ -135,6 +137,8 @@ void Hud_Draw(MenuCanvas *canvas)
     FreeDuelProgress_Draw(canvas, &x, &y, &w, &h);
     cover(x, y, w, h);
     TitleScreen_Draw(canvas, &x, &y, &w, &h);
+    cover(x, y, w, h);
+    RemotePlayOverlay_Draw(canvas, &x, &y, &w, &h);
     cover(x, y, w, h);
     Mods_DrawOverlay(canvas, Menu_Scale(), Menu_DrawTextScaled, Menu_TextWidthScaled, &x, &y, &w, &h);
     cover(x, y, w, h);
@@ -157,6 +161,7 @@ unsigned Hud_Signature(void)
     return stats_signature() ^ SaveMenu_Signature() * 2654435761u ^ DeckMenu_Signature() * 40503u ^
            FusionHelper_Signature() * 16777619u ^ RankMeter_Signature() * 3266489917u ^
            FreeDuelProgress_Signature() * 2654435789u ^ TitleScreen_Signature() * 2166136261u ^
+           RemotePlayOverlay_Signature() * 374761393u ^
            Mods_OverlaySignature(Memories_PresentedFrames()) * 2246822519u;
 }
 

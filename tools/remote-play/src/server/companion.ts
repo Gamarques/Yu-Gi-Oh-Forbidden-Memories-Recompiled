@@ -18,7 +18,10 @@ import path from "node:path";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   GUEST_NAME_MAX,
+  type CameraOverlay,
+  type DuelState,
   type GamePort,
+  type MediaState,
   StreamKind,
   type GuestToServer,
   type HostToServer,
@@ -26,6 +29,18 @@ import {
   type ServerToHost,
 } from "../shared/messages.js";
 import { GameLink } from "./game-link.js";
+import { CAMERA_MAX_HEIGHT, CAMERA_MAX_WIDTH, OverlayMode } from "./game-protocol.js";
+
+const OVERLAY_MODES: Record<CameraOverlay, OverlayMode> = {
+  never: OverlayMode.Never,
+  "my-turn": OverlayMode.MyTurn,
+  always: OverlayMode.Always,
+};
+
+const mediaState = (message: Partial<MediaState>): MediaState => ({
+  camera: message.camera === true,
+  mic: message.mic === true,
+});
 
 export interface CompanionOptions {
   gamePort: number;
@@ -129,6 +144,9 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
   let host: WebSocket | null = null;
   let guest: Guest | null = null;
   let guestPort: GamePort = 1;
+  let duel: DuelState = { inDuel: false, turn: 0 };
+  let hostMedia: MediaState = { camera: false, mic: false };
+  let guestMedia: MediaState = { camera: false, mic: false };
   let tunnelState: "off" | "starting" | "ready" | "failed" = "off";
   let tunnelUrl: string | undefined;
   let hostPort = 0;
@@ -221,6 +239,8 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     const leaving = guest;
     guest = null;
     holdPort(guestPort, false);
+    guestMedia = { camera: false, mic: false };
+    game.setCamera(0, 0, new Uint8Array(0));
     toHost({ type: "guest-left" });
     if (leaving.socket.readyState === WebSocket.OPEN) leaving.socket.close(1000, why);
     log(`the guest (${leaving.name}) left: ${why}`);
@@ -232,13 +252,24 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     log("host page connected");
     sendConfig();
     toHost({ type: "game", connected: game.connected });
-    if (guest) toHost({ type: "guest-joined", name: guest.name }); // a reloaded host page renegotiates
+    toHost({ type: "duel", ...duel });
+    if (guest) {
+      toHost({ type: "guest-joined", name: guest.name }); // a reloaded host page renegotiates
+      toHost({ type: "peer-media", ...guestMedia });
+    }
 
     ws.on("message", (data, isBinary) => {
       if (isBinary) {
         const bytes = data as Buffer;
         if (bytes[0] === StreamKind.RelayFrame && guest?.relay && guest.socket.bufferedAmount < GUEST_BACKLOG) {
           guest.socket.send(bytes);
+        } else if (guest && bytes[0] === StreamKind.CameraFrame && bytes.length >= 5) {
+          // The guest's camera, as the host page drew it, for the game's window.
+          const width = bytes.readUInt16LE(1);
+          const height = bytes.readUInt16LE(3);
+          if (width <= CAMERA_MAX_WIDTH && height <= CAMERA_MAX_HEIGHT && bytes.length === 5 + width * height * 2) {
+            game.setCamera(width, height, bytes.subarray(5));
+          }
         }
         return;
       }
@@ -265,6 +296,13 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
         case "rate":
           if (Number.isInteger(message.divisor)) game.setRate(message.divisor);
           break;
+        case "media":
+          hostMedia = mediaState(message);
+          toGuest({ type: "peer-media", ...hostMedia });
+          break;
+        case "overlay":
+          if (message.mode in OVERLAY_MODES) game.setOverlay(OVERLAY_MODES[message.mode]);
+          break;
         case "kick":
           if (guest) {
             toGuest({ type: "kicked" });
@@ -276,6 +314,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     ws.on("close", () => {
       if (host !== ws) return;
       host = null;
+      hostMedia = { camera: false, mic: false };
       log("host page closed");
       if (guest) {
         toGuest({ type: "host-left" });
@@ -303,6 +342,8 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
         if (guest) return reject("Someone else is already playing with the host.");
         joined = guest = { socket: ws, name: cleanName(message.name), relay: false, windowStart: Date.now(), windowCount: 0 };
         toGuest({ type: "joined", iceServers: options.iceServers, port: guestPort });
+        toGuest({ type: "duel", ...duel });
+        toGuest({ type: "peer-media", ...hostMedia });
         holdPort(guestPort, true);
         toHost({ type: "guest-joined", name: joined.name });
         log(`the guest (${joined.name}) joined as player ${guestPort + 1}`);
@@ -325,6 +366,11 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
             game.setPad(guestPort, message.bits);
             toHost({ type: "guest-pad", bits: message.bits & 0xffff });
           }
+          break;
+        case "media":
+          guestMedia = mediaState(message);
+          toHost({ type: "peer-media", ...guestMedia });
+          if (!guestMedia.camera) game.setCamera(0, 0, new Uint8Array(0));
           break;
         case "relay":
           joined.relay = message.on === true;
@@ -359,6 +405,11 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
   game.on("disconnected", () => {
     log("game disconnected; waiting for it");
     toHost({ type: "game", connected: false });
+  });
+  game.on("duel", (inDuel, turn) => {
+    duel = { inDuel, turn };
+    toHost({ type: "duel", ...duel });
+    toGuest({ type: "duel", ...duel });
   });
   game.on("video", (frame) => forward(StreamKind.Video, frame.payload));
   game.on("audio", (pcm) => forward(StreamKind.Audio, pcm));

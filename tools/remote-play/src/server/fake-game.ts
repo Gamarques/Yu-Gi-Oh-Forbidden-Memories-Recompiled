@@ -1,7 +1,10 @@
 // A stand-in for the game's bridge (remote_play.h), for working on the
 // companion and its pages without the game or a disc: the same messages
-// on the same port, a moving test picture that shows player 2's buttons, and
-// a tone while player 2 holds one.
+// on the same port, a moving test picture that shows player 2's buttons, a
+// tone while player 2 holds one, and a duel whose turn passes every eight
+// seconds (the strip at the top shows whose: blue player 1, red player 2).
+// The remote player's camera, which the real game draws in its window, is
+// only counted here.
 //
 //   node dist/server/fake-game.js [--port 47811]
 import { EventEmitter } from "node:events";
@@ -9,6 +12,7 @@ import net from "node:net";
 import { pathToFileURL } from "node:url";
 import {
   DEFAULT_GAME_PORT,
+  MAX_COMPANION_PAYLOAD,
   encodeMessage,
   GameMessage,
   MessageReader,
@@ -24,6 +28,7 @@ export interface FakeGameEvents {
   pad: [port: number, bits: number];
   presence: [port: number, present: boolean];
   companion: [connected: boolean];
+  camera: [width: number, height: number];
 }
 
 const rgb = (r: number, g: number, b: number): number => (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10);
@@ -38,6 +43,19 @@ export class FakeGame extends EventEmitter<FakeGameEvents> {
   private divisor = 2;
   private phase = 0;
   private readonly pixels = new Uint16Array(FAKE_WIDTH * FAKE_HEIGHT);
+  // The duel the fake game reports, and what the companion sent for its window.
+  inDuel = true;
+  turn: 0 | 1 = 0;
+  autoTurns = false;
+  overlayMode = 1;
+  cameraFrames = 0;
+  camera = { width: 0, height: 0 };
+  private sentDuel = -1;
+
+  setDuel(inDuel: boolean, turn: 0 | 1): void {
+    this.inDuel = inDuel;
+    this.turn = turn;
+  }
 
   async listen(port = DEFAULT_GAME_PORT): Promise<number> {
     const server = net.createServer((socket) => this.accept(socket));
@@ -64,12 +82,13 @@ export class FakeGame extends EventEmitter<FakeGameEvents> {
     this.client = socket;
     socket.setNoDelay(true);
     this.divisor = 2;
+    this.sentDuel = -1;
     const hello = Buffer.alloc(8);
     hello.writeUInt32LE(PROTOCOL_VERSION, 0);
     hello.writeUInt32LE(AUDIO_RATE, 4);
     socket.write(encodeMessage(GameMessage.Hello, hello));
     this.emit("companion", true);
-    const reader = new MessageReader(64);
+    const reader = new MessageReader(MAX_COMPANION_PAYLOAD);
     socket.on("data", (chunk: Buffer) => {
       try {
         for (const { type, payload } of reader.push(chunk)) this.handle(type, payload);
@@ -99,13 +118,28 @@ export class FakeGame extends EventEmitter<FakeGameEvents> {
       this.emit("presence", port, this.present[port as 0 | 1]);
     } else if (type === GameMessage.Rate && payload.length >= 1 && payload[0]! >= 1 && payload[0]! <= 60) {
       this.divisor = payload[0]!;
+    } else if (type === GameMessage.Camera && payload.length >= 4) {
+      const width = payload.readUInt16LE(0);
+      const height = payload.readUInt16LE(2);
+      if (payload.length !== 4 + width * height * 2) return;
+      this.camera = { width, height };
+      if (width) this.cameraFrames++;
+      this.emit("camera", width, height);
+    } else if (type === GameMessage.Overlay && payload.length >= 1) {
+      this.overlayMode = payload[0]!;
     }
   }
 
   private tick(): void {
     this.frame++;
     const client = this.client;
+    if (this.autoTurns && this.frame % (GAME_HZ * 8) === 0) this.turn = this.turn ? 0 : 1;
     if (!client || client.writableLength > 4 << 20) return; // as the game: never wait
+    const duel = (this.inDuel ? 2 : 0) + this.turn;
+    if (duel !== this.sentDuel) {
+      this.sentDuel = duel;
+      client.write(encodeMessage(GameMessage.Duel, Uint8Array.of(this.inDuel ? 1 : 0, this.turn)));
+    }
     client.write(encodeMessage(GameMessage.Audio, this.sound()));
     if (this.frame % this.divisor === 0) client.write(encodeMessage(GameMessage.Video, this.picture()));
   }
@@ -132,6 +166,8 @@ export class FakeGame extends EventEmitter<FakeGameEvents> {
         pixels[y * FAKE_WIDTH + x] = rgb((x + frame) & 0xff, (y * 2) & 0xff, 96);
       }
     }
+    // Whose turn: a strip along the top, blue for player 1, red for player 2.
+    this.fill(0, 0, FAKE_WIDTH, 6, this.turn ? rgb(220, 40, 40) : rgb(40, 90, 230));
     // A square bouncing across, so motion and frame rate can be seen.
     const span = FAKE_WIDTH - 32;
     const left = Math.abs((frame * 2) % (span * 2) - span);
@@ -160,6 +196,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const index = process.argv.indexOf("--port");
   const port = index > 0 ? Number(process.argv[index + 1]) : DEFAULT_GAME_PORT;
   const game = new FakeGame();
+  game.autoTurns = true;
   game.on("companion", (on) => console.log(on ? "companion connected" : "companion left"));
   game.on("presence", (p, on) => console.log(`player ${p + 1} ${on ? "joined" : "left"}`));
   game.on("pad", (p, bits) => console.log(`player ${p + 1} pad ${bits.toString(16).padStart(4, "0")}`));

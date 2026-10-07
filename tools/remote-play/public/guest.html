@@ -22,8 +22,11 @@
 
     <section id="play" class="panel screen-panel" hidden>
       <div class="screen-box" id="screen-box">
-        <video id="video" playsinline></video>
-        <img id="relay-view" alt="Game picture (relay)" hidden>
+        <div class="screen">
+          <video id="video" playsinline></video>
+          <img id="relay-view" alt="Game picture (relay)" hidden>
+          <video id="peer-cam" class="peer-cam" muted playsinline hidden aria-label="The host's camera"></video>
+        </div>
       </div>
       <div class="touch-pad" id="touch-pad" hidden>
         <div class="shoulders">
@@ -54,6 +57,19 @@
         <span class="chip" id="transport" data-state="off">Connecting</span>
         <span class="muted">Round trip: <span id="rtt">-</span></span>
       </div>
+      <div class="row">
+        <button id="camera-toggle" type="button" aria-pressed="false">Camera: off</button>
+        <button id="mic-toggle" type="button" aria-pressed="false">Microphone: off</button>
+        <label>Host's camera
+          <select id="overlay">
+            <option value="my-turn" selected>During my turn</option>
+            <option value="always">Always in a duel</option>
+            <option value="never">Never</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted" id="media-note"></p>
+      <audio id="peer-voice"></audio>
       <p class="muted">Holding: <span id="holding">-</span></p>
       <p class="hint" id="player-hint"></p>
     </section>

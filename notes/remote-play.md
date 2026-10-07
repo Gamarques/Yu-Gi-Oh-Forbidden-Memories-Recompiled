@@ -67,6 +67,40 @@ against the CPU, the guest's buttons do nothing. The host page can make the
 guest player 1 instead. The guest's bits then join the host's own on port 1,
 which reaches every screen. Port 2 is let go when that happens.
 
+### Camera and voice
+
+Each side can turn on a camera and a microphone. The host's offer always has
+four media sections in a fixed order: the game's picture, the game's sound,
+voice and camera (`src/web/media.ts`). Voice and camera go both ways. A camera
+or microphone switched on later only replaces the sender's track, so nothing
+is renegotiated.
+
+The other player's camera appears **over the opponent's field**: a framed
+picture at the top middle of the game's picture, over the far rows. By
+default it shows during your own turn, so while you prepare your move you
+see who you play against. Each side can choose "always in a duel" or
+"never" instead.
+
+* **The friend sees the host** in the guest page, as a video laid over the
+  game's stream.
+* **The host sees the friend in the game's own window.** The host page draws
+  the friend's camera at 160x120, 15 times a second, in the game's 15-bit
+  colour, and sends it through the companion (`REMOTE_PLAY_CAMERA`). The game
+  draws it with its HUD (`remote_play_overlay.c`, called from `hud.c`), in
+  the window's overlay and not in VRAM. So the stream the friend watches
+  never carries their own face.
+* **Whose turn.** The game reports whether a duel is on screen (main mode
+  `MAIN_MODE_DUEL`, not its 3D battle) and the side whose turn it is
+  (`D_8009B1D5`, the byte FM-Online watches too, `notes/fm-online.md`) as
+  `REMOTE_PLAY_DUEL`. The companion passes it to both pages.
+* **Voice** plays in the browser: the friend's in the host page, which must
+  stay open, and the host's in the guest page. The browsers cancel the echo
+  of what they play themselves. They cannot cancel the game's sound, which
+  the native game plays, so the host should wear headphones.
+* A camera and a microphone need a secure page: the host page
+  (`127.0.0.1`) and the tunnel's `https` link qualify. A plain `http` link on
+  the local network does not, and the guest page says so.
+
 ### Input: why an unreliable channel
 
 The data channel is `ordered: false, maxRetransmits: 0`, like UDP. A late
@@ -136,6 +170,11 @@ presence, the picture rate, and a companion that leaves.
 ## Limits and next steps
 
 * One guest, as player 2. Spectators would be more peers on the same stream.
+* The camera's place is fixed: the top middle of the picture. In the duel's
+  hand and card views it covers whatever is there. Following the field's own
+  camera would need its projection.
+* Whether a two-player duel runs in `MAIN_MODE_DUEL` is inferred from the
+  mode table and still needs checking against the real game.
 * The picture is the 4:3 one at the console's resolution, not the PC port's
   4x picture or widescreen. Those are bigger than needed for a video stream,
   and the browser's encoder would blur them anyway.

@@ -1,8 +1,10 @@
 #define _GNU_SOURCE
 #include "pc/platform/remote_play.h"
+#include "pc/platform/remote_play_overlay.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +17,16 @@
  * rate, and everything let go when the companion leaves. */
 
 static uint16_t vram[1024 * 512];
+static uint32_t window[640 * 480];
+
+/* The picture fills a 640x480 window (fusion_helper.h, set by the backend). */
+void FusionHelper_GetViewport(int *x, int *y, int *w, int *h)
+{
+    *x = 0;
+    *y = 0;
+    *w = 640;
+    *h = 480;
+}
 static unsigned char message[8 + 8 + 1024 * 512 * 2];
 
 static void read_exactly(int socket_handle, unsigned char *into, size_t length)
@@ -40,13 +52,16 @@ static int next_message(int socket_handle, uint32_t *length)
     return message[0];
 }
 
+/* One message in one send, so it arrives whole (as the companion sends). */
 static void send_message(int socket_handle, int type, const unsigned char *payload, uint32_t length)
 {
-    unsigned char header[8] = {0};
-    header[0] = (unsigned char)type;
-    header[4] = (unsigned char)length;
-    assert(send(socket_handle, header, 8, 0) == 8);
-    assert(send(socket_handle, payload, length, 0) == (ssize_t)length);
+    static unsigned char whole[8 + 4 + 320 * 240 * 2];
+    memset(whole, 0, 8);
+    whole[0] = (unsigned char)type;
+    whole[4] = (unsigned char)length;
+    whole[5] = (unsigned char)(length >> 8);
+    memcpy(whole + 8, payload, length);
+    assert(send(socket_handle, whole, 8 + length, 0) == (ssize_t)(8 + length));
 }
 
 static void frame(int x, int y, int w, int h, int rgb24)
@@ -76,12 +91,17 @@ int main(void)
     address.sin_port = htons((unsigned short)port);
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     assert(connect(companion, (struct sockaddr *)&address, sizeof(address)) == 0);
+    /* As the companion does: small messages go at once, not after an ACK. */
+    x = 1;
+    setsockopt(companion, IPPROTO_TCP, TCP_NODELAY, &x, sizeof(x));
 
     /* Frame 2: the greeting, then a picture (every second frame by default),
      * wrapping across the right edge of VRAM, the mask bit left out. */
     frame(1000, 500, 64, 20, 0);
     assert(next_message(companion, &length) == REMOTE_PLAY_HELLO && length == 8);
     assert(get32(message + 8) == REMOTE_PLAY_PROTOCOL && get32(message + 12) == 44100);
+    assert(next_message(companion, &length) == REMOTE_PLAY_DUEL && length == 2);
+    assert(message[8] == 0 && message[9] == 0);
     assert(next_message(companion, &length) == REMOTE_PLAY_VIDEO && length == 8 + 64 * 20 * 2);
     assert(get16(message + 8) == 64 && get16(message + 10) == 20 && get32(message + 12) == 2);
     for (y = 0; y < 20; y++)
@@ -109,6 +129,76 @@ int main(void)
     assert(next_message(companion, &length) == REMOTE_PLAY_VIDEO && length == 8 + 4);
     assert(get16(message + 16) == (0x1f | 0x10 << 5 | 0x01 << 10));
     assert(get16(message + 18) == (0x02 | 0x04 << 5 | 0x06 << 10));
+
+    /* A duel: the companion hears of it once, when it changes. */
+    RemotePlay_SetDuel(1, 0);
+    frame(0, 0, 0, 0, 0);
+    assert(next_message(companion, &length) == REMOTE_PLAY_DUEL && message[8] == 1 && message[9] == 0);
+
+    /* The remote player's camera: shown in a duel during player 1's turn. */
+    {
+        static unsigned char picture[4 + 4 * 3 * 2];
+        int w = 0, h = 0;
+        unsigned serial = 0, first;
+        picture[0] = 4;
+        picture[2] = 3;
+        for (x = 0; x < 12; x++) {
+            picture[4 + x * 2] = (unsigned char)x;
+            picture[5 + x * 2] = 0x80; /* the mask bit, which is left out */
+        }
+        assert(!RemotePlay_Camera(&w, &h, &serial));
+        send_message(companion, REMOTE_PLAY_CAMERA, picture, sizeof(picture));
+        frame(0, 0, 0, 0, 0);
+        assert(RemotePlay_Camera(&w, &h, &serial) && w == 4 && h == 3);
+        assert(RemotePlay_Camera(&w, &h, &first)[5] == 5);
+        send_message(companion, REMOTE_PLAY_CAMERA, picture, sizeof(picture));
+        frame(0, 0, 0, 0, 0);
+        assert(RemotePlay_Camera(&w, &h, &serial) && serial != first);
+        /* In the window: 30% of the field's width, centred, near the top,
+         * in a border, each camera pixel scaled up. */
+        {
+            MenuCanvas canvas = {0};
+            int bx, by, bw, bh;
+            unsigned signature = RemotePlayOverlay_Signature();
+            canvas.pixels = window;
+            canvas.stride = canvas.width = 640;
+            canvas.height = 480;
+            RemotePlayOverlay_Draw(&canvas, &bx, &by, &bw, &bh);
+            assert(bx == 224 - 3 && by == 43 - 3 && bw == 192 + 6 && bh == 144 + 6);
+            assert(window[(43 + 70) * 640 + 224 + 60] == (0xff000000u | (5u << 3) << 16)); /* camera pixel (1, 1) */
+            assert(window[(43 - 1) * 640 + 300] == 0xffb48cffu);                            /* the border */
+            assert(window[10 * 640 + 10] == 0);                                              /* nothing else */
+            assert(RemotePlayOverlay_Signature() == signature);
+        }
+        RemotePlay_SetDuel(1, 1); /* player 2's turn */
+        assert(!RemotePlay_Camera(&w, &h, &serial));
+        rate[0] = REMOTE_PLAY_OVERLAY_ALWAYS;
+        send_message(companion, REMOTE_PLAY_OVERLAY, rate, 1);
+        frame(0, 0, 0, 0, 0);
+        assert(RemotePlay_Camera(&w, &h, &serial));
+        RemotePlay_SetDuel(0, 0); /* no duel: never */
+        assert(!RemotePlay_Camera(&w, &h, &serial));
+        RemotePlay_SetDuel(1, 0);
+        rate[0] = REMOTE_PLAY_OVERLAY_NEVER;
+        send_message(companion, REMOTE_PLAY_OVERLAY, rate, 1);
+        frame(0, 0, 0, 0, 0);
+        assert(!RemotePlay_Camera(&w, &h, &serial));
+        rate[0] = REMOTE_PLAY_OVERLAY_MY_TURN;
+        send_message(companion, REMOTE_PLAY_OVERLAY, rate, 1);
+        /* A picture too big for the bridge is ignored; 0x0 turns it off. */
+        picture[0] = 0x41;
+        picture[1] = 0x01; /* 321 wide */
+        send_message(companion, REMOTE_PLAY_CAMERA, picture, sizeof(picture));
+        frame(0, 0, 0, 0, 0);
+        assert(RemotePlay_Camera(&w, &h, &serial) && w == 4);
+        memset(picture, 0, 4);
+        send_message(companion, REMOTE_PLAY_CAMERA, picture, 4);
+        frame(0, 0, 0, 0, 0);
+        assert(!RemotePlay_Camera(&w, &h, &serial));
+        /* Drain what those frames sent (pictures every frame now). */
+        while (recv(companion, message, sizeof(message), MSG_DONTWAIT) > 0) {
+        }
+    }
 
     /* The companion leaves: the port is let go. */
     close(companion);

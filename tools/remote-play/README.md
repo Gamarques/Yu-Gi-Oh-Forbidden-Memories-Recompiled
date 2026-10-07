@@ -8,7 +8,8 @@ works, and why it is built this way: [notes/remote-play.md](../../notes/remote-p
 |---|---|
 | ![Host page](docs/host-page.png) | ![Guest page](docs/guest-page.png) |
 
-The pictures show the stand-in game (`npm run fake-game`), not the real one.
+The pictures show the stand-in game (`npm run fake-game`), not the real one,
+and Chromium's fake camera.
 
 ## What you need
 
@@ -46,6 +47,16 @@ The game reads player 2's pad only in its two-player duels and trades. To
 let your friend play on every screen (the title, the campaign, duels against
 the CPU), pick **Your friend plays as: Player 1** on the host page; you then
 share player 1.
+
+### Camera and voice
+
+Both pages have **Camera** and **Microphone** buttons. Your friend's camera
+appears in the game window, over the opponent's field, during your turn. Your
+camera appears over the field on your friend's page during theirs. Either
+side can choose "always in a duel" or "never". Use headphones: the browser
+cannot cancel the game's own sound from your microphone. Your friend needs
+the tunnel's https link for their camera and microphone. A plain http link
+on the local network cannot use them.
 
 Your friend's keys are the PC port's own defaults: arrows, X (Cross),
 S (Circle), Z (Square), A (Triangle), Q/W (L1/R1), E/R (L2/R2), Enter (Start)
