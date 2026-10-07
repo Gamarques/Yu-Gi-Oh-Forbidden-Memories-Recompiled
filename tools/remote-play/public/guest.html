@@ -11,13 +11,13 @@
 <body>
   <main class="page">
     <header>
-      <h1>Yu-Gi-Oh! Forbidden Memories <span class="muted">player 2</span></h1>
+      <h1>Yu-Gi-Oh! Forbidden Memories <span class="muted" id="player">remote play</span></h1>
       <p id="status" class="muted" aria-live="polite">Enter a name and join.</p>
     </header>
 
     <form id="join-form" class="panel">
-      <label>Your name <input id="name" maxlength="24" autocomplete="nickname" placeholder="Player 2"></label>
-      <button id="join" class="primary" type="submit">Join as player 2</button>
+      <label>Your name <input id="name" maxlength="24" autocomplete="nickname" placeholder="Your name"></label>
+      <button id="join" class="primary" type="submit">Join the game</button>
     </form>
 
     <section id="play" class="panel screen-panel" hidden>
@@ -25,13 +25,37 @@
         <video id="video" playsinline></video>
         <img id="relay-view" alt="Game picture (relay)" hidden>
       </div>
+      <div class="touch-pad" id="touch-pad" hidden>
+        <div class="shoulders">
+          <button type="button" data-bit="0x0100">L2</button><button type="button" data-bit="0x0400">L1</button>
+          <button type="button" data-bit="0x0800">R1</button><button type="button" data-bit="0x0200">R2</button>
+        </div>
+        <div class="dpad">
+          <button type="button" class="up" data-bit="0x0010" aria-label="Up">&#9650;</button>
+          <button type="button" class="left" data-bit="0x0080" aria-label="Left">&#9664;</button>
+          <button type="button" class="right" data-bit="0x0020" aria-label="Right">&#9654;</button>
+          <button type="button" class="down" data-bit="0x0040" aria-label="Down">&#9660;</button>
+        </div>
+        <div class="middle">
+          <button type="button" data-bit="0x0001">Select</button>
+          <button type="button" data-bit="0x0008">Start</button>
+        </div>
+        <div class="face">
+          <button type="button" class="up" data-bit="0x1000" aria-label="Triangle">&#9651;</button>
+          <button type="button" class="left" data-bit="0x8000" aria-label="Square">&#9633;</button>
+          <button type="button" class="right" data-bit="0x2000" aria-label="Circle">&#9675;</button>
+          <button type="button" class="down" data-bit="0x4000" aria-label="Cross">&#10005;</button>
+        </div>
+      </div>
       <div class="row">
+        <button id="touch-toggle" type="button">On-screen pad</button>
         <button id="fullscreen" type="button">Full screen</button>
         <button id="leave" type="button">Leave</button>
         <span class="chip" id="transport" data-state="off">Connecting</span>
         <span class="muted">Round trip: <span id="rtt">-</span></span>
       </div>
       <p class="muted">Holding: <span id="holding">-</span></p>
+      <p class="hint" id="player-hint"></p>
     </section>
 
     <section class="panel">
@@ -44,7 +68,7 @@
         <tr><td>L1 / R1, L2 / R2</td><td>Q / W, E / R</td><td>Bumpers, triggers</td></tr>
         <tr><td>Start / Select</td><td>Enter / Shift</td><td>Start / Back</td></tr>
       </table>
-      <p class="muted">A controller works when this page is opened over https (the tunnel link) or on the host's own computer.</p>
+      <p class="muted">A controller works when this page is opened over https (the tunnel link) or on the host's own computer. On a phone or tablet, use the on-screen pad.</p>
     </section>
   </main>
 </body>

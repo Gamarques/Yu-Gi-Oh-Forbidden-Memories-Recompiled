@@ -18,6 +18,7 @@ import path from "node:path";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import {
   GUEST_NAME_MAX,
+  type GamePort,
   StreamKind,
   type GuestToServer,
   type HostToServer,
@@ -90,7 +91,7 @@ export function cleanName(name: unknown): string {
   // Letters, digits, spaces and a little punctuation; nothing that could
   // be markup or a control character.
   const cleaned = text.normalize("NFC").replace(/[^\p{L}\p{N} _.\-]/gu, "").trim().slice(0, GUEST_NAME_MAX);
-  return cleaned || "Player 2";
+  return cleaned || "Guest";
 }
 
 function parse<T>(data: RawData, isBinary: boolean): T | null {
@@ -127,6 +128,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
   const game = new GameLink(options.gamePort);
   let host: WebSocket | null = null;
   let guest: Guest | null = null;
+  let guestPort: GamePort = 1;
   let tunnelState: "off" | "starting" | "ready" | "failed" = "off";
   let tunnelUrl: string | undefined;
   let hostPort = 0;
@@ -206,16 +208,22 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     return list;
   };
   const sendConfig = () =>
-    toHost({ type: "config", invites: invites(), iceServers: options.iceServers, tunnel: tunnelState });
+    toHost({ type: "config", invites: invites(), iceServers: options.iceServers, tunnel: tunnelState, guestPort });
+
+  // A guest holds their port: player 2's counts as a connected pad.
+  const holdPort = (port: GamePort, held: boolean) => {
+    game.setPad(port, 0);
+    if (port === 1) game.setPresence(1, held);
+  };
 
   function leaveGuest(why: string): void {
     if (!guest) return;
     const leaving = guest;
     guest = null;
-    game.setPresence(1, false);
+    holdPort(guestPort, false);
     toHost({ type: "guest-left" });
     if (leaving.socket.readyState === WebSocket.OPEN) leaving.socket.close(1000, why);
-    log(`player 2 (${leaving.name}) left: ${why}`);
+    log(`the guest (${leaving.name}) left: ${why}`);
   }
 
   function onHost(ws: WebSocket): void {
@@ -241,8 +249,19 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
           toGuest({ type: "signal", data: message.data });
           break;
         case "pad":
-          if (guest && Number.isInteger(message.bits)) game.setPad(1, message.bits);
+          if (guest && Number.isInteger(message.bits)) game.setPad(guestPort, message.bits);
           break;
+        case "guest-port": {
+          const port: GamePort = message.port === 0 ? 0 : 1;
+          if (port === guestPort) break;
+          if (guest) holdPort(guestPort, false);
+          guestPort = port;
+          if (guest) holdPort(guestPort, true);
+          toHost({ type: "guest-port", port });
+          toGuest({ type: "player", port });
+          log(`the guest now plays as player ${port + 1}`);
+          break;
+        }
         case "rate":
           if (Number.isInteger(message.divisor)) game.setRate(message.divisor);
           break;
@@ -281,12 +300,12 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
         clearTimeout(timeout);
         if (!sameToken(message.token, token)) return reject("This invite link is not valid (any more).");
         if (!host) return reject("The host is not sharing right now.");
-        if (guest) return reject("Someone is already playing as player 2.");
+        if (guest) return reject("Someone else is already playing with the host.");
         joined = guest = { socket: ws, name: cleanName(message.name), relay: false, windowStart: Date.now(), windowCount: 0 };
-        toGuest({ type: "joined", iceServers: options.iceServers });
-        game.setPresence(1, true);
+        toGuest({ type: "joined", iceServers: options.iceServers, port: guestPort });
+        holdPort(guestPort, true);
         toHost({ type: "guest-joined", name: joined.name });
-        log(`player 2 (${joined.name}) joined`);
+        log(`the guest (${joined.name}) joined as player ${guestPort + 1}`);
         return;
       }
       if (guest !== joined) return;
@@ -303,14 +322,14 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
           break;
         case "pad":
           if (Number.isInteger(message.bits)) {
-            game.setPad(1, message.bits);
+            game.setPad(guestPort, message.bits);
             toHost({ type: "guest-pad", bits: message.bits & 0xffff });
           }
           break;
         case "relay":
           joined.relay = message.on === true;
           toHost({ type: "relay", on: joined.relay });
-          log(`player 2 ${joined.relay ? "switched to" : "left"} the relay`);
+          log(`the guest ${joined.relay ? "switched to" : "left"} the relay`);
           break;
         default:
           break;

@@ -137,8 +137,8 @@ async function connectGuest(): Promise<void> {
   connection.onconnectionstatechange = () => {
     if (peer !== connection) return;
     const state = connection.connectionState;
-    if (state === "connected") chip("guest-status", `Player 2: ${guestName} (WebRTC)`, "on");
-    else if (state === "failed") chip("guest-status", `Player 2: ${guestName} (no direct connection)`, "wait");
+    if (state === "connected") chip("guest-status", `Friend: ${guestName} (WebRTC)`, "on");
+    else if (state === "failed") chip("guest-status", `Friend: ${guestName} (no direct connection)`, "wait");
   };
   const offer = await connection.createOffer();
   await connection.setLocalDescription(offer);
@@ -207,7 +207,7 @@ function startRelay(): void {
       RELAY_QUALITY,
     );
   }, 1000 / RELAY_FPS);
-  chip("guest-status", `Player 2: ${guestName} (relay)`, "wait");
+  chip("guest-status", `Friend: ${guestName} (relay)`, "wait");
 }
 
 function stopRelay(): void {
@@ -255,21 +255,26 @@ socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
       const tunnel = { off: null, starting: ["Tunnel: starting", "wait"], ready: ["Tunnel: ready", "on"], failed: ["Tunnel: failed", "bad"] } as const;
       const shown = tunnel[message.tunnel];
       if (shown) chip("tunnel-status", shown[0], shown[1]);
+      $<HTMLSelectElement>("guest-port").value = String(message.guestPort);
       break;
     }
+    case "guest-port":
+      $<HTMLSelectElement>("guest-port").value = String(message.port);
+      showPad(0);
+      break;
     case "game":
       chip("game-status", message.connected ? "Game: connected" : "Game: waiting", message.connected ? "on" : "wait");
       break;
     case "guest-joined":
       guestName = message.name;
-      chip("guest-status", `Player 2: ${guestName} (connecting)`, "wait");
+      chip("guest-status", `Friend: ${guestName} (connecting)`, "wait");
       $<HTMLButtonElement>("kick").disabled = false;
       void connectGuest();
       break;
     case "guest-left":
       guestName = null;
       closePeer();
-      chip("guest-status", "Player 2: nobody", "off");
+      chip("guest-status", "Friend: nobody", "off");
       $<HTMLButtonElement>("kick").disabled = true;
       hint(null);
       showPad(0);
@@ -326,6 +331,9 @@ $<HTMLButtonElement>("start").addEventListener("click", () => void startSharing(
 $<HTMLButtonElement>("kick").addEventListener("click", () => send({ type: "kick" }));
 $<HTMLSelectElement>("rate").addEventListener("change", (event) =>
   send({ type: "rate", divisor: Number((event.target as HTMLSelectElement).value) }),
+);
+$<HTMLSelectElement>("guest-port").addEventListener("change", (event) =>
+  send({ type: "guest-port", port: (event.target as HTMLSelectElement).value === "0" ? 0 : 1 }),
 );
 setInterval(() => void updateStats(), 1000);
 out.fillStyle = "#000";

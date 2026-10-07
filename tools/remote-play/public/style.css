@@ -63,3 +63,20 @@ canvas, video, #relay-view { width: 100%; max-width: 640px; aspect-ratio: 4 / 3;
 .stats dd { margin: 0; font-variant-numeric: tabular-nums; }
 .keys { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 .keys th, .keys td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+
+/* The guest's on-screen pad, for phones and tablets. */
+.touch-pad { width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; grid-template-areas: "shoulders shoulders shoulders" "dpad middle face"; gap: 12px; align-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+.touch-pad button { touch-action: none; padding: 0; min-width: 48px; min-height: 48px; font-size: 1.1rem; }
+.touch-pad button.held { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.touch-pad .shoulders { grid-area: shoulders; display: flex; justify-content: space-between; gap: 8px; }
+.touch-pad .shoulders button { flex: 1 1 0; }
+.touch-pad .dpad, .touch-pad .face { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); grid-template-areas: ". up ." "left . right" ". down ."; justify-content: center; }
+.touch-pad .dpad { grid-area: dpad; }
+.touch-pad .face { grid-area: face; }
+.touch-pad .up { grid-area: up; }
+.touch-pad .left { grid-area: left; }
+.touch-pad .right { grid-area: right; }
+.touch-pad .down { grid-area: down; }
+.touch-pad .face button { border-radius: 50%; }
+.touch-pad .middle { grid-area: middle; display: flex; flex-direction: column; gap: 8px; }
+.touch-pad .middle button { min-height: 36px; padding: 0 10px; font-size: 0.85rem; }

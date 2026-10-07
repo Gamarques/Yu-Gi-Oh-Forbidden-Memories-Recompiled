@@ -1,6 +1,7 @@
 // The guest page: what the friend opens from the invite link. It joins
 // with the token after the "#", answers the host's WebRTC offer, shows the
-// stream, and sends the pad (keyboard and controllers) as player 2. If no
+// stream, and sends the pad (keyboard, controllers, on-screen pad) for the
+// player the host gave the guest (2 by default). If no
 // direct connection comes up in time, or the link has "?relay", it asks for
 // the relay: JPEG pictures and pad bits through the WebSocket instead.
 import { StreamKind, type GuestToServer, type ServerToGuest, type SignalData } from "../shared/messages.js";
@@ -36,6 +37,8 @@ let sequence = 0;
 let sentBits = -1;
 let sentAt = 0;
 const held = new Set<string>();
+// On-screen pad: the bit each touching pointer holds.
+const touches = new Map<number, number>();
 
 function status(text: string): void {
   $("status").textContent = text;
@@ -48,6 +51,14 @@ function transport(text: string, state: "on" | "off" | "wait" | "bad"): void {
 }
 
 const send = (message: GuestToServer) => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(message));
+
+function showPlayer(port: number): void {
+  $("player").textContent = `player ${port + 1}`;
+  $("player-hint").textContent =
+    port === 1
+      ? "You are player 2: the game reads your pad only in its two-player duels and trades. On the title and the other screens, the host plays (or can make you player 1)."
+      : "You are player 1, together with the host: your pad works on every screen.";
+}
 
 // --- joining ---
 
@@ -79,12 +90,16 @@ function onMessage(data: ArrayBuffer | string): void {
   switch (message.type) {
     case "joined":
       iceServers = message.iceServers;
+      showPlayer(message.port);
       $("join-form").hidden = true;
       $("play").hidden = false;
-      status("Joined as player 2. Waiting for the host's picture...");
+      status("Joined. Waiting for the host's picture...");
       transport("Connecting", "wait");
       if (forceRelay) startRelay();
       else connectTimer = window.setTimeout(() => startRelay(), CONNECT_TIMEOUT_MS);
+      break;
+    case "player":
+      showPlayer(message.port);
       break;
     case "rejected":
       status(message.reason);
@@ -156,7 +171,7 @@ async function onSignal(data: SignalData): Promise<void> {
           connectTimer = null;
           if (relay) stopRelay();
           transport("WebRTC (direct)", "on");
-          status("Playing as player 2.");
+          status(`Playing as ${$("player").textContent}.`);
         } else if (connection.connectionState === "failed") {
           startRelay();
         }
@@ -189,7 +204,7 @@ function startRelay(): void {
   video.hidden = true;
   relayView.hidden = false;
   transport("Relay (no sound)", "wait");
-  status("Playing as player 2 through the relay: no direct connection could be made.");
+  status("Playing through the relay: no direct connection could be made.");
 }
 
 function stopRelay(): void {
@@ -211,6 +226,7 @@ function showRelayPicture(data: ArrayBuffer): void {
 
 function currentBits(): number {
   let bits = document.hasFocus() ? keyboardBits(held) : 0;
+  for (const bit of touches.values()) bits |= bit;
   for (const pad of navigator.getGamepads?.() ?? []) if (pad?.connected) bits |= gamepadBits(pad);
   return bits;
 }
@@ -264,6 +280,34 @@ setInterval(() => {
   if (channel?.readyState === "open") channel.send(encodePing(ChannelMessage.Ping, performance.now()));
 }, 1000);
 
+function setupTouchPad(): void {
+  const pad = $("touch-pad");
+  const release = (event: PointerEvent) => {
+    const target = event.currentTarget as HTMLElement;
+    if (touches.delete(event.pointerId)) target.classList.remove("held");
+    sendInput();
+  };
+  for (const button of pad.querySelectorAll<HTMLButtonElement>("button[data-bit]")) {
+    const bit = Number(button.dataset.bit);
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      touches.set(event.pointerId, bit);
+      button.classList.add("held");
+      sendInput();
+    });
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("pointerleave", release);
+    button.addEventListener("contextmenu", (event) => event.preventDefault());
+  }
+  // Shown by itself where the main pointer is a finger.
+  pad.hidden = !matchMedia("(pointer: coarse)").matches;
+  $<HTMLButtonElement>("touch-toggle").addEventListener("click", () => {
+    pad.hidden = !pad.hidden;
+  });
+}
+
+setupTouchPad();
 $<HTMLFormElement>("join-form").addEventListener("submit", join);
 $<HTMLButtonElement>("leave").addEventListener("click", () => leave("You left the game."));
 $<HTMLButtonElement>("fullscreen").addEventListener("click", () => void $("screen-box").requestFullscreen?.());

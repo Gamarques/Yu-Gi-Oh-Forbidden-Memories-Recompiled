@@ -18,7 +18,7 @@
     <section class="status" aria-live="polite">
       <div class="chip" id="game-status" data-state="off">Game: waiting</div>
       <div class="chip" id="share-status" data-state="off">Sharing: off</div>
-      <div class="chip" id="guest-status" data-state="off">Player 2: nobody</div>
+      <div class="chip" id="guest-status" data-state="off">Friend: nobody</div>
       <div class="chip" id="tunnel-status" data-state="off" hidden>Tunnel</div>
     </section>
 
@@ -30,23 +30,29 @@
           <option value="1">60 per second</option>
         </select>
       </label>
-      <button id="kick" disabled>Remove player 2</button>
+      <label>Your friend plays as
+        <select id="guest-port">
+          <option value="1" selected>Player 2 (two-player duels and trades)</option>
+          <option value="0">Player 1 (the whole game, with you)</option>
+        </select>
+      </label>
+      <button id="kick" disabled>Remove your friend</button>
       <p id="hint" class="hint" hidden></p>
     </section>
 
     <section class="panel">
       <h2>Invite</h2>
-      <p class="muted">Send one of these links to your friend. Anyone with the link can join as player 2 while you share.</p>
+      <p class="muted">Send one of these links to your friend. Anyone with the link can join while you share.</p>
       <ul id="invites" class="invites"></ul>
     </section>
 
     <section class="panel screen-panel">
-      <canvas id="screen" width="640" height="480" aria-label="What player 2 sees"></canvas>
+      <canvas id="screen" width="640" height="480" aria-label="What your friend sees"></canvas>
       <dl class="stats">
         <dt>From the game</dt><dd id="stat-in">-</dd>
-        <dt>To player 2</dt><dd id="stat-out">-</dd>
+        <dt>To your friend</dt><dd id="stat-out">-</dd>
         <dt>Round trip</dt><dd id="stat-rtt">-</dd>
-        <dt>Player 2 holds</dt><dd id="stat-pad">-</dd>
+        <dt>Your friend holds</dt><dd id="stat-pad">-</dd>
       </dl>
     </section>
   </main>

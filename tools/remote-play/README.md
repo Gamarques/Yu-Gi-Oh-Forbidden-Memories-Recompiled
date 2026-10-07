@@ -42,10 +42,15 @@ The pictures show the stand-in game (`npm run fake-game`), not the real one.
 5. In the game, choose a two-player duel or trade: player 2's pad is
    connected while your friend is in.
 
+The game reads player 2's pad only in its two-player duels and trades. To
+let your friend play on every screen (the title, the campaign, duels against
+the CPU), pick **Your friend plays as: Player 1** on the host page; you then
+share player 1.
+
 Your friend's keys are the PC port's own defaults: arrows, X (Cross),
 S (Circle), Z (Square), A (Triangle), Q/W (L1/R1), E/R (L2/R2), Enter (Start)
 and Shift (Select). A controller works too when the page is opened through
-the tunnel's https link.
+the tunnel's https link, and phones get an on-screen pad.
 
 ### Options
 

@@ -59,6 +59,14 @@ Nothing here makes the game a public service.
    Gamepad API's standard layout), and sends the pad over a WebRTC data
    channel.
 
+### Which player
+
+By default the guest holds port 2. The game reads that pad only in its
+two-player duels and trades, so on the title, in the campaign and in duels
+against the CPU, the guest's buttons do nothing. The host page can make the
+guest player 1 instead. The guest's bits then join the host's own on port 1,
+which reaches every screen. Port 2 is let go when that happens.
+
 ### Input: why an unreliable channel
 
 The data channel is `ordered: false, maxRetransmits: 0`, like UDP. A late

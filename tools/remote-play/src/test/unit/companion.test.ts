@@ -169,6 +169,34 @@ test("player 2 joins, plays and leaves", async () => {
   await once(host, "close");
 });
 
+test("the host chooses which player the guest is", async () => {
+  const host = await hostSocket();
+  assert.equal((await next(host, "config")).guestPort, 1);
+  const guest = await guestSocket();
+  guest.send(JSON.stringify({ type: "join", token: companion.token, name: "Tea" }));
+  assert.equal((await next(guest, "joined")).port, 1);
+  await until(() => game.present[1]);
+  guest.send(JSON.stringify({ type: "pad", bits: 0x4000 }));
+  await until(() => game.bits[1] === 0x4000);
+
+  // Player 1: port 2 is let go, and the guest's pad goes to port 1.
+  host.send(JSON.stringify({ type: "guest-port", port: 0 }));
+  assert.equal((await next(guest, "player")).port, 0);
+  assert.equal((await next(host, "guest-port")).port, 0);
+  await until(() => !game.present[1] && game.bits[1] === 0);
+  guest.send(JSON.stringify({ type: "pad", bits: 0x0008 }));
+  await until(() => game.bits[0] === 0x0008);
+
+  // Leaving lets go of port 1 too; back to player 2 for the next guest.
+  guest.close();
+  await next(host, "guest-left");
+  await until(() => game.bits[0] === 0);
+  host.send(JSON.stringify({ type: "guest-port", port: 1 }));
+  await next(host, "guest-port");
+  host.close();
+  await once(host, "close");
+});
+
 test("the host can remove player 2", async () => {
   const host = await hostSocket();
   const guest = await guestSocket();
@@ -184,6 +212,6 @@ test("the host can remove player 2", async () => {
 test("names are cleaned", () => {
   assert.equal(cleanName("  Téa Gardner  "), "Téa Gardner");
   assert.equal(cleanName("<script>"), "script");
-  assert.equal(cleanName(42), "Player 2");
+  assert.equal(cleanName(42), "Guest");
   assert.equal(cleanName("x".repeat(100)).length, 24);
 });

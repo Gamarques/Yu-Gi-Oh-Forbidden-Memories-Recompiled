@@ -101,6 +101,28 @@ async function main(): Promise<void> {
     await until("a round trip time", async () => /\d+ ms/.test((await guest.textContent("#rtt")) ?? ""));
     console.log(`ok: keys reach port 2 over the data channel (round trip ${await guest.textContent("#rtt")})`);
 
+    // The on-screen pad (phones) presses buttons too.
+    const pressed: number[] = [];
+    game.on("pad", (port, bits) => port === 1 && pressed.push(bits));
+    if (await guest.isHidden("#touch-pad")) await guest.click("#touch-toggle");
+    await guest.click('#touch-pad button[aria-label="Circle"]');
+    await until("Circle from the on-screen pad", () => pressed.includes(Pad.Circle));
+    await until("release", () => game.bits[1] === 0);
+    console.log("ok: the on-screen pad reaches port 2");
+
+    // The host makes the guest player 1: their keys reach port 1, which
+    // the game reads on every screen.
+    await host.selectOption("#guest-port", "0");
+    await until("the guest told", async () => (await guest.textContent("#player")) === "player 1");
+    await until("port 2 let go", () => !game.present[1]);
+    await guest.keyboard.down("Enter");
+    await until("Start on port 1", () => game.bits[0] === Pad.Start);
+    await guest.keyboard.up("Enter");
+    await until("release on port 1", () => game.bits[0] === 0);
+    await host.selectOption("#guest-port", "1");
+    await until("port 2 held again", () => game.present[1]);
+    console.log("ok: the host can make the guest player 1");
+
     // Leaving lets go of port 2.
     await guest.click("#leave");
     await until("port 2 released", () => !game.present[1]);
