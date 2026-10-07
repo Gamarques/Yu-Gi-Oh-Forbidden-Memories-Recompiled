@@ -905,7 +905,7 @@ def main():
              *[obj(s) for s in NATIVE + game], f"{options.build}/stubs.o", guest_branches, f"{options.build}/mod_exports.o",
              version, f"{options.build}/section_markers.o", *resources,
              f"{WIN32_DEPS}/sdl/lib/libSDL3.dll.a", "-lopengl32", f"{WIN32_DEPS}/lib/libfreetype.a",
-             f"{WIN32_DEPS}/lib/libpng16.a", f"{WIN32_DEPS}/lib/libzs.a", "-ldbghelp", "-lwinhttp", "-static", "-lpthread"])
+             f"{WIN32_DEPS}/lib/libpng16.a", f"{WIN32_DEPS}/lib/libzs.a", "-ldbghelp", "-lwinhttp", "-lws2_32", "-static", "-lpthread"])
         shutil.copy(f"{WIN32_DEPS}/sdl/bin/SDL3.dll", options.build)
     else:
         # Mods bind through mod_exports.o, so nothing needs -rdynamic.

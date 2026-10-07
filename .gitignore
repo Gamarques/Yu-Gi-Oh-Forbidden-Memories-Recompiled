@@ -24,3 +24,7 @@
 # Tool-generated language caches
 **/__pycache__/
 *.py[cod]
+
+# The remote play companion's packages and build (tools/remote-play)
+/tools/remote-play/node_modules/
+/tools/remote-play/dist/

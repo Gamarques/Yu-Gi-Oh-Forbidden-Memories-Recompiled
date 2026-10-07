@@ -4,6 +4,7 @@
 #include "psyq/libspu.h"
 #include "pc/audio/spu.h"
 #include "pc/platform/platform.h"
+#include "pc/platform/remote_play.h"
 #include "pc/debug/log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,12 +17,19 @@ static unsigned long reverb_voices;
 static int started;
 static u16 sample_notes[SPU_VOICES];
 
+/* The mix, shared with a remote player too (remote_play.h). */
+static void mix_shared(int16_t *frames, size_t count)
+{
+    Spu_Mix(frames, count);
+    RemotePlay_Audio(frames, count);
+}
+
 void SpuInit(void)
 {
     Spu_Reset();
     if (!started) {
         started = 1;
-        Platform_StartAudio(Spu_Mix);
+        Platform_StartAudio(RemotePlay_Enabled() ? mix_shared : Spu_Mix);
     }
 }
 

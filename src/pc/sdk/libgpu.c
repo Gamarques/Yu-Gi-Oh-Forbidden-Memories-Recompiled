@@ -8,6 +8,7 @@
 #include "pc/guest/image.h"
 #include "pc/platform/platform.h"
 #include "pc/platform/credits.h"
+#include "pc/platform/remote_play.h"
 #include "pc/render/soft_gpu.h"
 #include "pc/sdk/display.h"
 #include <stdio.h>
@@ -303,6 +304,9 @@ void Memories_PresentDisplay(void)
     Platform_Frame((unsigned)frames_presented);
     Credits_Frame();
     frame_hash();
+    /* MEMORIES_REMOTE_PLAY: the picture at the console's resolution and the
+     * pad bits of a remote player (remote_play.h), headless too. */
+    RemotePlay_Frame(SoftGpu_Vram(), SOFT_GPU_WIDTH, disp_env.disp.x, disp_env.disp.y, w, h, disp_env.isrgb24);
     {
         /* MEMORIES_WINDOW_SHOT=<frame>: the window as shown at that frame,
          * as the screenshot key would save it (checking the window itself

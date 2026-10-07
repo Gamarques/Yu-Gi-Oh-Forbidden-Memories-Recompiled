@@ -4,6 +4,7 @@
  * from it must stay async-signal-safe (no stdio, no allocation, no Xlib). */
 #include "pc/platform/platform.h"
 #include "pc/platform/button_layout.h"
+#include "pc/platform/remote_play.h"
 #include "pc/platform/settings.h"
 #include "pc/platform/ai_trace.h"
 #include "pc/platform/title_jump.h"
@@ -83,7 +84,8 @@ static void run_vblank(void)
     for (port = 0; port < 2 && pads_started; port++) {
         if (pad_buffer[port]) {
             /* Released while the deck slot screen reads the pad (deck_menu.h). */
-            unsigned bits = DeckMenu_HoldsPads() ? 0 : Platform_Pad(port);
+            /* A remote player's bits join the port's own (remote_play.h). */
+            unsigned bits = DeckMenu_HoldsPads() ? 0 : Platform_Pad(port) | RemotePlay_Pad(port);
             MemoriesModEvent input = {MEMORIES_EVENT_INPUT, MEMORIES_BEFORE, port, (int)bits, 0, (int)bits, 0};
             Mods_Dispatch(&input);
             bits = (unsigned)(input.handled ? input.result : input.b) & 0xffffu;
@@ -93,7 +95,7 @@ static void run_vblank(void)
              * does; after-hooks see what the game gets. */
             if (Settings_Get(SET_JP_BUTTONS)) bits = ButtonLayout_Apply((uint16_t)bits, Platform_PadFixedBits(port), 1);
             input.result = (int)bits; input.phase = MEMORIES_AFTER; Mods_Dispatch(&input);
-            pad_buffer[port][0] = Platform_PadConnected(port) ? 0x00 : 0xff; /* 0xff: no pad */
+            pad_buffer[port][0] = Platform_PadConnected(port) || RemotePlay_PadConnected(port) ? 0x00 : 0xff; /* 0xff: no pad */
             pad_buffer[port][1] = 0x41;
             pad_buffer[port][2] = (unsigned char)~bits;
             pad_buffer[port][3] = (unsigned char)~(bits >> 8);

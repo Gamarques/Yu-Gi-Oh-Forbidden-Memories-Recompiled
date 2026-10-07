@@ -1,0 +1,65 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f4f2ee;
+  --panel: #ffffff;
+  --text: #1d1b18;
+  --muted: #6b665e;
+  --line: #ddd8cf;
+  --accent: #6a3fb5;
+  --accent-text: #ffffff;
+  --ok: #1f7a43;
+  --warn: #9a6400;
+  --bad: #b3261e;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15131a;
+    --panel: #1f1c25;
+    --text: #ece8f2;
+    --muted: #a39cae;
+    --line: #34303c;
+    --accent: #9b74e0;
+    --accent-text: #120f17;
+    --ok: #5fcf8b;
+    --warn: #e0b04f;
+    --bad: #f08a80;
+  }
+}
+
+* { box-sizing: border-box; }
+/* The pages show and hide sections with the attribute; no layout rule may undo it. */
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+.page { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+h1 { margin: 0 0 4px; font-size: 1.5rem; }
+h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.muted { color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.panel > h2, .panel > p, .panel > ul, .panel > table, .panel > dl { flex-basis: 100%; margin: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; width: 100%; }
+button, select, input { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+button { cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+label { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.status { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 0.9rem; background: var(--panel); }
+.chip[data-state="on"] { color: var(--ok); border-color: currentColor; }
+.chip[data-state="wait"] { color: var(--warn); border-color: currentColor; }
+.chip[data-state="bad"] { color: var(--bad); border-color: currentColor; }
+.hint { color: var(--warn); }
+.invites { list-style: none; padding: 0; display: grid; gap: 8px; }
+.invites li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.invites code { flex: 1 1 280px; overflow-wrap: anywhere; font-size: 0.85rem; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.screen-panel { justify-content: center; }
+canvas, video, #relay-view { width: 100%; max-width: 640px; aspect-ratio: 4 / 3; background: #000; border-radius: 6px; image-rendering: pixelated; display: block; }
+.screen-box { width: 100%; display: flex; justify-content: center; }
+.screen-box:fullscreen { background: #000; align-items: center; }
+.screen-box:fullscreen video, .screen-box:fullscreen #relay-view { max-width: none; height: 100%; width: auto; border-radius: 0; }
+.stats { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-variant-numeric: tabular-nums; }
+.keys { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.keys th, .keys td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }

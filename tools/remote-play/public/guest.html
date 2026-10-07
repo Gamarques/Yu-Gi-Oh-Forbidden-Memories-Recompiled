@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote Play</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/js/web/guest.js"></script>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <h1>Yu-Gi-Oh! Forbidden Memories <span class="muted">player 2</span></h1>
+      <p id="status" class="muted" aria-live="polite">Enter a name and join.</p>
+    </header>
+
+    <form id="join-form" class="panel">
+      <label>Your name <input id="name" maxlength="24" autocomplete="nickname" placeholder="Player 2"></label>
+      <button id="join" class="primary" type="submit">Join as player 2</button>
+    </form>
+
+    <section id="play" class="panel screen-panel" hidden>
+      <div class="screen-box" id="screen-box">
+        <video id="video" playsinline></video>
+        <img id="relay-view" alt="Game picture (relay)" hidden>
+      </div>
+      <div class="row">
+        <button id="fullscreen" type="button">Full screen</button>
+        <button id="leave" type="button">Leave</button>
+        <span class="chip" id="transport" data-state="off">Connecting</span>
+        <span class="muted">Round trip: <span id="rtt">-</span></span>
+      </div>
+      <p class="muted">Holding: <span id="holding">-</span></p>
+    </section>
+
+    <section class="panel">
+      <h2>Controls</h2>
+      <table class="keys">
+        <tr><th>Pad</th><th>Keyboard</th><th>Controller</th></tr>
+        <tr><td>D-pad</td><td>Arrow keys</td><td>D-pad or left stick</td></tr>
+        <tr><td>Cross / Circle</td><td>X / S</td><td>A / B</td></tr>
+        <tr><td>Square / Triangle</td><td>Z / A</td><td>X / Y</td></tr>
+        <tr><td>L1 / R1, L2 / R2</td><td>Q / W, E / R</td><td>Bumpers, triggers</td></tr>
+        <tr><td>Start / Select</td><td>Enter / Shift</td><td>Start / Back</td></tr>
+      </table>
+      <p class="muted">A controller works when this page is opened over https (the tunnel link) or on the host's own computer.</p>
+    </section>
+  </main>
+</body>
+</html>

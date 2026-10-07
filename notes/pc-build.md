@@ -299,6 +299,8 @@ game's debug menu, reached with the options case's input; see
 `MEMORIES_INPUT="700:0008,706:0000"` (scripted pad bits from a frame on;
 `MEMORIES_INPUT2` the same for the second pad, which then counts as
 connected: two-player trades and duels),
+`MEMORIES_REMOTE_PLAY=1` (or a port number; a friend plays as player 2 from a
+browser through `tools/remote-play`, [Remote play](remote-play.md)),
 `MEMORIES_DEBUG_CHEST=N` (N of every card in the trunk),
 `MEMORIES_DEBUG_DECK="723-762"` (the deck, as ids and ranges repeated to
 forty) and `MEMORIES_DEBUG_STARCHIPS=N` (the balance, as Set StarChips puts

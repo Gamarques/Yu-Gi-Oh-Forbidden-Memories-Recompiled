@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote Play Host</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/js/web/host.js"></script>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <h1>Remote play <span class="muted">host</span></h1>
+      <p class="muted">Keep this tab open while your friend plays. The game's picture and sound go to them from here.</p>
+    </header>
+
+    <section class="status" aria-live="polite">
+      <div class="chip" id="game-status" data-state="off">Game: waiting</div>
+      <div class="chip" id="share-status" data-state="off">Sharing: off</div>
+      <div class="chip" id="guest-status" data-state="off">Player 2: nobody</div>
+      <div class="chip" id="tunnel-status" data-state="off" hidden>Tunnel</div>
+    </section>
+
+    <section class="panel">
+      <button id="start" class="primary">Start sharing</button>
+      <label>Pictures
+        <select id="rate">
+          <option value="2" selected>30 per second</option>
+          <option value="1">60 per second</option>
+        </select>
+      </label>
+      <button id="kick" disabled>Remove player 2</button>
+      <p id="hint" class="hint" hidden></p>
+    </section>
+
+    <section class="panel">
+      <h2>Invite</h2>
+      <p class="muted">Send one of these links to your friend. Anyone with the link can join as player 2 while you share.</p>
+      <ul id="invites" class="invites"></ul>
+    </section>
+
+    <section class="panel screen-panel">
+      <canvas id="screen" width="640" height="480" aria-label="What player 2 sees"></canvas>
+      <dl class="stats">
+        <dt>From the game</dt><dd id="stat-in">-</dd>
+        <dt>To player 2</dt><dd id="stat-out">-</dd>
+        <dt>Round trip</dt><dd id="stat-rtt">-</dd>
+        <dt>Player 2 holds</dt><dd id="stat-pad">-</dd>
+      </dl>
+    </section>
+  </main>
+</body>
+</html>

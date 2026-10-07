@@ -1,0 +1,26 @@
+{
+  "name": "memories-remote-play",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Companion for the game's remote play bridge: invite a friend to play as player 2 from a browser.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && node dist/server/main.js",
+    "fake-game": "npm run build && node dist/server/fake-game.js",
+    "test": "npm run build && node --test dist/test/unit/*.test.js",
+    "test:e2e": "npm run build && node dist/test/e2e.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "playwright-core": "^1.56.0",
+    "typescript": "^5.7.0"
+  }
+}
