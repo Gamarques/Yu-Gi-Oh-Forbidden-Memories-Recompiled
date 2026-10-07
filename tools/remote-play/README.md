@@ -38,7 +38,7 @@ The pictures show the stand-in game (`npm run fake-game`), not the real one.
    Your browser opens the **host page** (`http://127.0.0.1:8700`).
 
 3. Press **Start sharing**, copy an invite link and send it to your friend.
-4. Your friend opens it, types a name and presses **Join as player 2**.
+4. Your friend opens it, types a name and presses **Join the game**.
 5. In the game, choose a two-player duel or trade: player 2's pad is
    connected while your friend is in.
 
