@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "pc/platform/remote_play.h"
 #include "pc/platform/remote_play_overlay.h"
+#include "pc/saves/arena.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <netinet/in.h>
@@ -200,10 +201,40 @@ int main(void)
         }
     }
 
+    /* Duel Arena decks: set, refused, cleared, and cleared again when the
+     * companion leaves. */
+    {
+        static unsigned char deck[2 + ARENA_DECK_SIZE * 2];
+        deck[0] = 1;
+        deck[1] = ARENA_DECK_SIZE;
+        for (x = 0; x < ARENA_DECK_SIZE; x++) deck[2 + x * 2] = (unsigned char)(1 + x);
+        send_message(companion, REMOTE_PLAY_ARENA_DECK, deck, sizeof(deck));
+        frame(0, 0, 0, 0, 0);
+        assert(Arena_Active(1) && !Arena_Active(0));
+        deck[0] = 0;
+        deck[2] = 0; /* card 0: refused */
+        send_message(companion, REMOTE_PLAY_ARENA_DECK, deck, sizeof(deck));
+        frame(0, 0, 0, 0, 0);
+        assert(!Arena_Active(0));
+        deck[0] = 1;
+        deck[1] = 0;
+        send_message(companion, REMOTE_PLAY_ARENA_DECK, deck, 2);
+        frame(0, 0, 0, 0, 0);
+        assert(!Arena_Active(1));
+        deck[1] = ARENA_DECK_SIZE;
+        deck[2] = 7;
+        send_message(companion, REMOTE_PLAY_ARENA_DECK, deck, sizeof(deck));
+        frame(0, 0, 0, 0, 0);
+        assert(Arena_Active(1));
+        while (recv(companion, message, sizeof(message), MSG_DONTWAIT) > 0) {
+        }
+    }
+
     /* The companion leaves: the port is let go. */
     close(companion);
     frame(0, 0, 320, 240, 0);
     assert(RemotePlay_Pad(1) == 0 && !RemotePlay_PadConnected(1));
+    assert(!Arena_Active(1));
     RemotePlay_Shutdown();
     puts("remote play: ok");
     return 0;

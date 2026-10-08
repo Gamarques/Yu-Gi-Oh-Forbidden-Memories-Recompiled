@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "pc/saves/save_menu.h"
+#include "pc/saves/arena.h"
 #include "pc/guest/state.h"
 #include "pc/platform/settings.h"
 #include "pc/compat/posix.h"
@@ -266,6 +267,74 @@ int main(void)
         assert(!SaveSlots_ReadState(1, right, sound) && right[0x50] == 4);
     }
 #endif
+
+    /* Duel Arena: with a deck for each side, both sides load at once, with
+     * no menu, from the save in use; the decks are the arena's, player 2's
+     * duelist code is changed so one save serves both, and no file changes. */
+    {
+        static unsigned char arena_left[SAVE_SLOT_STATE_SIZE], arena_right[SAVE_SLOT_STATE_SIZE];
+        static unsigned char file_before[2][SAVE_SLOT_FILE_SIZE], file_after[SAVE_SLOT_FILE_SIZE];
+        const unsigned char *saved;
+        int used;
+        uint16_t one[ARENA_DECK_SIZE], two[ARENA_DECK_SIZE];
+        FILE *decks;
+        for (i = 0; i < ARENA_DECK_SIZE; i++) {
+            one[i] = (uint16_t)(1 + i);
+            two[i] = (uint16_t)(700 + i % 20);
+        }
+        read_image(0, file_before[0]);
+        read_image(1, file_before[1]);
+        assert(Arena_SetDeck(0, one, ARENA_FROM_COMPANION) && Arena_SetDeck(1, two, ARENA_FROM_COMPANION));
+        assert(SaveMenu_Begin(SAVE_MENU_LOAD_PAIR, arena_left, NULL, sizeof(arena_left), NAME, sound));
+        assert(poll(0, 0) == 1 && !SaveMenu_Active());
+        assert(SaveMenu_Begin(SAVE_MENU_LOAD_PAIR, arena_right, NULL, sizeof(arena_right), NAME, sound));
+        assert(poll(0, 0x10) == 1 && !SaveMenu_Active());
+        used = SaveMenu_PairSlot(0);
+        assert((used == 0 || used == 1) && SaveMenu_PairSlot(1) == used);
+        saved = file_before[used] + SAVE_SLOT_HEADER_SIZE;
+        for (i = 0; i < ARENA_DECK_SIZE; i++) {
+            assert((arena_left[i * 2] | arena_left[i * 2 + 1] << 8) == one[i]);
+            assert((arena_right[i * 2] | arena_right[i * 2 + 1] << 8) == two[i]);
+        }
+        assert(!memcmp(arena_left + 0x334, saved + 0x334, 4) && memcmp(arena_left + 0x334, arena_right + 0x334, 4));
+        /* The rest is the save's. */
+        assert(!memcmp(arena_left + 80, saved + 80, 0x334 - 80) && !memcmp(arena_right + 80, saved + 80, 0x334 - 80));
+        for (i = 0; i < 2; i++) {
+            read_image(i, file_after);
+            assert(!memcmp(file_before[i], file_after, sizeof(file_after)));
+        }
+
+        /* Not forty retail cards: refused, the old deck stays. */
+        two[3] = 0;
+        assert(!Arena_SetDeck(1, two, ARENA_FROM_COMPANION) && Arena_Active(1));
+        two[3] = ARENA_CARD_MAX + 1;
+        assert(!Arena_SetDeck(1, two, ARENA_FROM_COMPANION));
+        /* The companion leaving clears its decks: the menu asks again. */
+        Arena_ClearFrom(ARENA_FROM_COMPANION);
+        assert(!Arena_Active(0) && !Arena_Active(1));
+        begin(SAVE_MENU_LOAD_PAIR, arena_left, NULL, sizeof(arena_left), 0);
+        assert(SaveMenu_Active());
+        assert(poll(SAVE_MENU_PAD_CANCEL, 0) == 3);
+
+        /* The decks from a file: a bad line is skipped. */
+        snprintf(path, sizeof(path), "%s/arena.txt", directory);
+        assert((decks = fopen(path, "w")) != NULL);
+        fputs("1: 1,2,3\n2: ", decks);
+        for (i = 0; i < ARENA_DECK_SIZE; i++) fprintf(decks, "%s%d", i ? "," : "", 10 + i);
+        fputs("\n", decks);
+        assert(!fclose(decks));
+        Arena_Reset();
+        assert(!setenv("MEMORIES_ARENA_DECKS", path, 1));
+        assert(!Arena_Active(0) && Arena_Active(1));
+        assert(SaveMenu_Begin(SAVE_MENU_LOAD_PAIR, arena_right, NULL, sizeof(arena_right), NAME, sound));
+        assert(poll(0, 0x10) == 1);
+        assert((arena_right[78] | arena_right[79] << 8) == 49);
+        Arena_ClearFrom(ARENA_FROM_COMPANION);
+        assert(Arena_Active(1)); /* the file's stay */
+        assert(!unsetenv("MEMORIES_ARENA_DECKS"));
+        remove(path);
+        Arena_Reset();
+    }
 
     for (i = 0; i < SAVE_SLOT_COUNT; i++) {
         assert(!SaveSlots_Path(i, path, sizeof(path)));

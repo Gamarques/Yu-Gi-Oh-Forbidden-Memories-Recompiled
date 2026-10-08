@@ -1,0 +1,29 @@
+{
+    "name": "Dragões",
+    "description": "Força bruta: Blue-eyes, Red-eyes e companhia, com Mountain e Dragon Treasure para passar dos 3000.",
+    "cards": {
+        "Blue-eyes White Dragon": 3,
+        "Blue-eyes Ultimate Dragon": 1,
+        "Meteor B. Dragon": 1,
+        "B. Skull Dragon": 1,
+        "Tri-horned Dragon": 2,
+        "Red-eyes B. Dragon": 3,
+        "Seiyaryu": 2,
+        "Curse of Dragon": 3,
+        "Kaiser Dragon": 2,
+        "Serpent Night Dragon": 2,
+        "Thousand Dragon": 1,
+        "Gaia the Dragon Champion": 1,
+        "Parrot Dragon": 2,
+        "B. Dragon Jungle King": 2,
+        "Dragon Treasure": 2,
+        "Megamorph": 2,
+        "Mountain": 2,
+        "Raigeki": 1,
+        "Dark Hole": 1,
+        "Swords of Revealing Light": 2,
+        "Dian Keto the Cure Master": 1,
+        "Spellbinding Circle": 2,
+        "Widespread Ruin": 1
+    }
+}

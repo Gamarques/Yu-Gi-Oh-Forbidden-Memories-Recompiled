@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright-core";
+import { loadArena } from "../server/cards.js";
 import { startCompanion } from "../server/companion.js";
 import { FakeGame } from "../server/fake-game.js";
 import { Pad } from "../shared/pad.js";
@@ -47,7 +48,8 @@ function logConsole(page: Page, name: string): void {
 async function main(): Promise<void> {
   const game = new FakeGame();
   const gamePort = await game.listen(0);
-  const companion = await startCompanion({ gamePort, hostPort: 0, publicPort: 0, lan: false, iceServers: [], root, log: (line) => console.log(`  companion: ${line}`) });
+  const arena = await loadArena(path.resolve(root, "../../notes/card-catalog.csv"), path.join(root, "decks"), () => {});
+  const companion = await startCompanion({ arena, gamePort, hostPort: 0, publicPort: 0, lan: false, iceServers: [], root, log: (line) => console.log(`  companion: ${line}`) });
   const hostBrowser = await launch();
   const guestBrowser = await launch();
   try {
@@ -158,6 +160,32 @@ async function main(): Promise<void> {
     await guest.click("#camera-toggle");
     await until("the camera gone from the game", () => game.camera.width === 0);
     console.log("ok: the host's camera shows over the field on the guest's turn, and their voice plays");
+
+    // Duel Arena: the host plays a premade deck as player 1; the guest builds
+    // one (a card from the search, then a whole deck from a code) as player 2.
+    const dragons = arena.decks.find((deck) => deck.name === "Dragões")!;
+    const spellcasters = arena.decks.find((deck) => deck.name === "Magos")!;
+    await until("the premade decks", () => host.evaluate(() => document.querySelectorAll("#arena-premade option").length >= 4));
+    const dragonsIndex = await host.evaluate(() =>
+      [...document.querySelectorAll<HTMLOptionElement>("#arena-premade option")].findIndex((option) => option.text.startsWith("Dragões")),
+    );
+    await host.selectOption("#arena-premade", String(dragonsIndex));
+    await host.click("#arena-play-premade");
+    await until("player 1's deck in the game", () => game.arenaDecks[0]?.join() === dragons.cards.join());
+    await guest.click(".arena-builder summary");
+    await guest.fill("#arena-search", "Blue-eyes White");
+    await guest.click('#arena-results button[title="Add Blue-eyes White Dragon"]');
+    assert.equal(await guest.textContent("#arena-count"), "1/40");
+    await guest.fill("#arena-code", spellcasters.cards.join(","));
+    await guest.click("text=Use code");
+    assert.equal(await guest.textContent("#arena-count"), "40/40");
+    await guest.fill("#arena-name", "Meu deck");
+    await guest.click("#arena-play");
+    await until("player 2's deck in the game", () => game.arenaDecks[1]?.join() === spellcasters.cards.join());
+    await until("the host sees player 2 ready", async () =>
+      ((await host.textContent("#arena")) ?? "").includes("Player 2: Meu deck"),
+    );
+    console.log("ok: Duel Arena decks from both pages reach the game");
 
     // The on-screen pad (phones) presses buttons too.
     const pressed: number[] = [];

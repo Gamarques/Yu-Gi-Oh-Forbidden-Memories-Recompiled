@@ -37,12 +37,16 @@
  *     REMOTE_PLAY_OVERLAY   u8 when the window shows that camera: 0 never,
  *                           1 in a duel during player 1's turn (the
  *                           default: while you prepare your move, you see
- *                           who you play against), 2 always in a duel */
+ *                           who you play against), 2 always in a duel
+ *     REMOTE_PLAY_ARENA_DECK  u8 side (0 or 1), u8 count (40, or 0 to clear),
+ *                           then count u16 card ids: the Duel Arena deck that
+ *                           side's 2P DUEL save is loaded with (arena.h);
+ *                           cleared when the companion leaves */
 #include <stddef.h>
 #include <stdint.h>
 
 #define REMOTE_PLAY_DEFAULT_PORT 47811
-#define REMOTE_PLAY_PROTOCOL 2
+#define REMOTE_PLAY_PROTOCOL 3
 #define REMOTE_PLAY_CAMERA_MAX_W 320
 #define REMOTE_PLAY_CAMERA_MAX_H 240
 enum {
@@ -54,7 +58,8 @@ enum {
     REMOTE_PLAY_PRESENCE = 17,
     REMOTE_PLAY_RATE = 18,
     REMOTE_PLAY_CAMERA = 19,
-    REMOTE_PLAY_OVERLAY = 20
+    REMOTE_PLAY_OVERLAY = 20,
+    REMOTE_PLAY_ARENA_DECK = 21
 };
 enum { REMOTE_PLAY_OVERLAY_NEVER, REMOTE_PLAY_OVERLAY_MY_TURN, REMOTE_PLAY_OVERLAY_ALWAYS };
 

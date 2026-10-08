@@ -2,7 +2,7 @@
 // header {u8 type, u8 0, u16 0, u32 payload length}, little-endian, then the
 // payload. Keep the two in step.
 export const DEFAULT_GAME_PORT = 47811;
-export const PROTOCOL_VERSION = 2; // 2: the duel, the remote player's camera
+export const PROTOCOL_VERSION = 3; // 2: the duel, the remote player's camera; 3: Duel Arena decks
 export const CAMERA_MAX_WIDTH = 320;
 export const CAMERA_MAX_HEIGHT = 240;
 export const HEADER_BYTES = 8;
@@ -17,6 +17,7 @@ export const enum GameMessage {
   Rate = 18,
   Camera = 19,
   Overlay = 20,
+  ArenaDeck = 21,
 }
 
 // When the game's window shows the remote player's camera (remote_play.h).
@@ -69,6 +70,15 @@ export function cameraMessage(width: number, height: number, pixels: Uint8Array)
 
 export function overlayMessage(mode: OverlayMode): Buffer {
   return encodeMessage(GameMessage.Overlay, Uint8Array.of(mode));
+}
+
+// A Duel Arena deck for side 0 or 1 (forty ids), or none.
+export function arenaDeckMessage(side: 0 | 1, ids: readonly number[] | null): Buffer {
+  const payload = Buffer.alloc(2 + (ids ? ids.length * 2 : 0));
+  payload.writeUInt8(side, 0);
+  payload.writeUInt8(ids ? ids.length : 0, 1);
+  ids?.forEach((id, i) => payload.writeUInt16LE(id, 2 + i * 2));
+  return encodeMessage(GameMessage.ArenaDeck, payload);
 }
 
 export interface ParsedMessage {

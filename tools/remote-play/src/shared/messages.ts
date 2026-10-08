@@ -21,6 +21,8 @@ export interface MediaState {
 // a duel always, or never. The game's window takes the same choice.
 export type CameraOverlay = "my-turn" | "always" | "never";
 
+import type { ArenaSide } from "./arena.js";
+
 // JSON messages on the two WebSockets. Binary messages on the host socket
 // carry the game's own payloads behind a one-byte kind (StreamKind).
 
@@ -47,7 +49,16 @@ export type ServerToHost =
   | { type: "relay"; on: boolean }
   | { type: "signal"; data: SignalData }
   | { type: "guest-pad"; bits: number }
-  | { type: "guest-port"; port: GamePort };
+  | { type: "guest-port"; port: GamePort }
+  | ArenaStatus
+  | ArenaError;
+
+// Duel Arena (notes/duel-arena.md): both sides' choice, to both pages; a
+// refused deck, to the page that sent it.
+export type ArenaStatus = { type: "arena"; sides: [ArenaSide, ArenaSide]; available: boolean };
+export type ArenaError = { type: "arena-error"; message: string };
+// A page's deck for its own side, or null to take it back.
+export type ArenaChoice = { type: "arena-deck"; name: string; cards: number[] | null };
 
 export type HostToServer =
   | { type: "signal"; data: SignalData }
@@ -56,6 +67,7 @@ export type HostToServer =
   | { type: "guest-port"; port: GamePort } // which pad the guest holds
   | ({ type: "media" } & MediaState) // the host's camera and microphone
   | { type: "overlay"; mode: CameraOverlay } // the game window's camera
+  | ArenaChoice // player 1's deck
   | { type: "kick" };
 
 export const enum StreamKind {
@@ -71,7 +83,8 @@ export type GuestToServer =
   | { type: "signal"; data: SignalData }
   | { type: "pad"; bits: number } // relay mode, or before the data channel opens
   | { type: "relay"; on: boolean }
-  | ({ type: "media" } & MediaState); // the guest's camera and microphone
+  | ({ type: "media" } & MediaState) // the guest's camera and microphone
+  | ArenaChoice; // player 2's deck
 
 export type ServerToGuest =
   | { type: "joined"; iceServers: RTCIceServer[]; port: GamePort }
@@ -81,6 +94,8 @@ export type ServerToGuest =
   | { type: "rejected"; reason: string }
   | { type: "signal"; data: SignalData }
   | { type: "host-left" }
-  | { type: "kicked" };
+  | { type: "kicked" }
+  | ArenaStatus
+  | ArenaError;
 
 export const GUEST_NAME_MAX = 24;

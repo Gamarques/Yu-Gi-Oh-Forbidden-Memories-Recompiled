@@ -1,0 +1,15 @@
+{
+    "id": "duel-arena",
+    "name": "Duel Arena",
+    "version": "1.0",
+    "author": "DecompRecomp",
+    "description": "Puts DUEL ARENA (the game's 2P DUEL) first on the title and hides TRADE. The decks come from the remote play pages (tools/remote-play) or the file MEMORIES_ARENA_DECKS names; with one for a side, the duel loads a save for it by itself, any card allowed (notes/duel-arena.md).",
+    "enabled": false,
+    "menu": {
+        "entries": {
+            "duel": {"label": "DUEL ARENA"},
+            "trade": {"hide": true}
+        },
+        "order": {"first": ["duel", "new_game", "load", "options"]}
+    }
+}

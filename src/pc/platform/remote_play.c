@@ -4,6 +4,7 @@
  * costs the game dropped pictures, never a stall. */
 #define _GNU_SOURCE
 #include "remote_play.h"
+#include "pc/saves/arena.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -166,6 +167,7 @@ static void drop_client(const char *why)
     out_length = out_sent = in_length = 0;
     camera_w = camera_h = 0;
     sent_duel = -1;
+    Arena_ClearFrom(ARENA_FROM_COMPANION);
     overlay_mode = REMOTE_PLAY_OVERLAY_MY_TURN;
     fprintf(stderr, "memories-pc: remote play: companion left (%s)\n", why);
 }
@@ -223,6 +225,18 @@ static void handle_message(const unsigned char *message, const unsigned char *pa
         camera_frame = frames_seen;
         break;
     }
+    case REMOTE_PLAY_ARENA_DECK:
+        if (port >= 0 && length >= 2 && payload[1] == 0) {
+            Arena_SetDeck(port, NULL, ARENA_FROM_COMPANION);
+        } else if (port >= 0 && payload[1] == ARENA_DECK_SIZE && length >= 2 + ARENA_DECK_SIZE * 2) {
+            uint16_t ids[ARENA_DECK_SIZE];
+            int i;
+            for (i = 0; i < ARENA_DECK_SIZE; i++) ids[i] = (uint16_t)(payload[2 + i * 2] | payload[3 + i * 2] << 8);
+            if (!Arena_SetDeck(port, ids, ARENA_FROM_COMPANION)) {
+                fprintf(stderr, "memories-pc: remote play: arena deck for player %d refused\n", port + 1);
+            }
+        }
+        break;
     case REMOTE_PLAY_OVERLAY:
         if (length >= 1 && payload[0] <= REMOTE_PLAY_OVERLAY_ALWAYS) overlay_mode = payload[0];
         break;

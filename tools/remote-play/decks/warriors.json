@@ -1,0 +1,27 @@
+{
+    "name": "Guerreiros",
+    "description": "Guerreiros com Legendary Sword e Sogen, e armadilhas para segurar o ataque do outro.",
+    "cards": {
+        "Black Luster Soldier": 1,
+        "Gate Guardian": 1,
+        "Garma Sword": 1,
+        "Gaia the Fierce Knight": 3,
+        "Judge Man": 2,
+        "Empress Judge": 2,
+        "Skull Guardian": 2,
+        "Swordstalker": 3,
+        "Warrior of Tradition": 3,
+        "Giltia the D. Knight": 2,
+        "Performance of Sword": 2,
+        "Legendary Sword": 3,
+        "Megamorph": 2,
+        "Sogen": 2,
+        "Raigeki": 1,
+        "Dark Hole": 1,
+        "Swords of Revealing Light": 2,
+        "Goblin's Secret Remedy": 2,
+        "Acid Trap Hole": 2,
+        "Widespread Ruin": 2,
+        "Invisible Wire": 1
+    }
+}

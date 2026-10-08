@@ -7,6 +7,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
+import { loadArena } from "../../server/cards.js";
 import { startCompanion, cleanName, type Companion } from "../../server/companion.js";
 import { FakeGame, FAKE_HEIGHT, FAKE_WIDTH } from "../../server/fake-game.js";
 
@@ -17,7 +18,8 @@ let companion: Companion;
 before(async () => {
   game = new FakeGame();
   const gamePort = await game.listen(0);
-  companion = await startCompanion({ gamePort, hostPort: 0, publicPort: 0, lan: false, iceServers: [], root, log: () => {} });
+  const arena = await loadArena(path.resolve(root, "../../notes/card-catalog.csv"), path.join(root, "decks"), () => {});
+  companion = await startCompanion({ gamePort, hostPort: 0, publicPort: 0, lan: false, iceServers: [], root, log: () => {}, arena });
   await once(companion.game, "connected");
 });
 
@@ -54,7 +56,7 @@ function next(ws: WebSocket, type: string, timeoutMs = 3000): Promise<Record<str
     const poll = () => {
       const index = messages.findIndex((message) => message.type === type);
       if (index >= 0) resolve(messages.splice(index, 1)[0]!);
-      else if (Date.now() - start > timeoutMs) reject(new Error(`no ${type} message`));
+      else if (Date.now() - start > timeoutMs) reject(new Error(`no ${type} message (got ${messages.map((m) => m.type).join(", ")})`));
       else setTimeout(poll, 5);
     };
     poll();
@@ -240,6 +242,61 @@ test("the duel, cameras and microphones are passed on", async () => {
   await next(host, "guest-left");
   await until(() => game.camera.width === 0);
   game.setDuel(true, 0);
+  host.close();
+  await once(host, "close");
+});
+
+test("Duel Arena: each side's deck reaches the game", async () => {
+  // The card list and the premade decks, on both sides.
+  const listed = await new Promise<{ cards: unknown[]; decks: { name: string; cards: number[] }[] }>((resolve, reject) =>
+    http
+      .get({ port: companion.publicPort, host: "127.0.0.1", path: "/api/arena" }, (response) => {
+        let body = "";
+        response.on("data", (chunk: Buffer) => (body += chunk.toString()));
+        response.on("end", () => resolve(JSON.parse(body)));
+      })
+      .on("error", reject),
+  );
+  assert.equal(listed.cards.length, 722);
+  const dragons = listed.decks.find((deck) => deck.name === "Dragões")!;
+  const spellcasters = listed.decks.find((deck) => deck.name === "Magos")!;
+
+  const host = await hostSocket();
+  assert.equal((await next(host, "arena")).available, true);
+  host.send(JSON.stringify({ type: "arena-deck", name: "Dragões", cards: dragons.cards }));
+  await until(() => game.arenaDecks[0]?.join() === dragons.cards.join());
+  host.send(JSON.stringify({ type: "arena-deck", name: "Bad", cards: dragons.cards.slice(1) }));
+  assert.match(String((await next(host, "arena-error")).message), /40 cards/);
+  assert.equal(game.arenaDecks[0]?.join(), dragons.cards.join(), "a refused deck changes nothing");
+
+  const guest = await guestSocket();
+  guest.send(JSON.stringify({ type: "join", token: companion.token, name: "Bakura" }));
+  await next(guest, "joined");
+  const seen = await next(guest, "arena");
+  assert.deepEqual((seen.sides as { ready: boolean }[]).map((side) => side.ready), [true, false]);
+  guest.send(JSON.stringify({ type: "arena-deck", name: "<Magos>", cards: spellcasters.cards }));
+  await until(() => game.arenaDecks[1]?.join() === spellcasters.cards.join());
+  await until(() =>
+    inbox.get(host)!.some((m) => m.type === "arena" && (m.sides as { deckName: string }[])[1]?.deckName === "Magos"),
+  );
+
+  // As player 1 the guest has no arena deck: theirs is taken back.
+  host.send(JSON.stringify({ type: "guest-port", port: 0 }));
+  await until(() => game.arenaDecks[1] === null);
+  guest.send(JSON.stringify({ type: "arena-deck", name: "Magos", cards: spellcasters.cards }));
+  assert.match(String((await next(guest, "arena-error")).message), /player 1/);
+  host.send(JSON.stringify({ type: "guest-port", port: 1 }));
+  await next(host, "guest-port");
+
+  // The guest leaving takes their deck back; the host's stays until taken back.
+  guest.send(JSON.stringify({ type: "arena-deck", name: "Magos", cards: spellcasters.cards }));
+  await until(() => game.arenaDecks[1] !== null);
+  guest.close();
+  await next(host, "guest-left");
+  await until(() => game.arenaDecks[1] === null);
+  assert.notEqual(game.arenaDecks[0], null);
+  host.send(JSON.stringify({ type: "arena-deck", name: "", cards: null }));
+  await until(() => game.arenaDecks[0] === null);
   host.close();
   await once(host, "close");
 });

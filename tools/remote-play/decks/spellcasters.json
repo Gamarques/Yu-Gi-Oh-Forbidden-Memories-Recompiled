@@ -1,0 +1,27 @@
+{
+    "name": "Magos",
+    "description": "O deck do Yugi: Dark Magician, elfas e Summoned Skull, com Yami e Book of Secret Arts.",
+    "cards": {
+        "Dark Magician": 3,
+        "Magician of Black Chaos": 1,
+        "Skull Knight": 1,
+        "Cosmo Queen": 1,
+        "Dark Elf": 3,
+        "Gemini Elf": 3,
+        "Kazejin": 2,
+        "Mask of Shine & Dark": 2,
+        "Musician King": 2,
+        "Maha Vailo": 2,
+        "Summoned Skull": 3,
+        "Gaia the Fierce Knight": 2,
+        "Black Luster Soldier": 1,
+        "Book of Secret Arts": 3,
+        "Yami": 2,
+        "Raigeki": 1,
+        "Dark Hole": 1,
+        "Swords of Revealing Light": 2,
+        "Spellbinding Circle": 2,
+        "Dian Keto the Cure Master": 2,
+        "Widespread Ruin": 1
+    }
+}

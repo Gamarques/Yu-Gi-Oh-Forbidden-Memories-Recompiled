@@ -1,5 +1,6 @@
 /* The save slot menu. See save_menu.h. */
 #include "save_menu.h"
+#include "arena.h"
 #include "pc/guest/state.h"
 #include "pc/platform/settings.h"
 #include <stdint.h>
@@ -61,7 +62,9 @@ static int selectable(int slot)
     const SaveSlotInfo *info = &menu.slots[slot];
     if (menu.step == SAVE_MENU_SAVE) return 1;
     if (info->status != SAVE_SLOT_USED) return 0;
-    return !(menu.step == SAVE_MENU_LOAD_PAIR && menu.side == 1 && slot == menu.pair_slot[0]);
+    /* An arena player 2 may share player 1's save: the deck is the arena's
+     * and the duelist code is changed (arena.h). */
+    return !(menu.step == SAVE_MENU_LOAD_PAIR && menu.side == 1 && slot == menu.pair_slot[0] && !Arena_Active(1));
 }
 
 static void show_message(int after, int waits, const char *format, int slot)
@@ -172,6 +175,7 @@ static int load(int slot)
         return 0;
     }
     if (menu.step == SAVE_MENU_LOAD_PAIR) {
+        Arena_ApplyPairLoad(menu.side, menu.buffer);
         menu.pair_slot[menu.side] = slot;
     } else {
         menu.current_slot = slot;
@@ -235,6 +239,12 @@ int SaveMenu_Poll(unsigned pressed, int channel, int *sound, SaveSlotCheck valid
             return close_with(write_pair());
         }
         start(channel);
+        /* Duel Arena: a side with an arena deck takes the newest save
+         * without asking (arena.h). */
+        if (menu.step == SAVE_MENU_LOAD_PAIR && Arena_Active(menu.side) && menu.view == VIEW_LIST &&
+            selectable(menu.cursor)) {
+            return load(menu.cursor);
+        }
         return 0;
     }
     switch (menu.view) {

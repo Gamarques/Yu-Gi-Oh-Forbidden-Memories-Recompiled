@@ -14,6 +14,7 @@ import {
   type SignalData,
 } from "../shared/messages.js";
 import { ChannelMessage, decodeChannel, describeBits, encodePing, isNewer } from "../shared/pad.js";
+import { mountArena } from "./arena-ui.js";
 import { LocalMedia, limitCameraBitrate, Section, sectionOf, setButton } from "./media.js";
 
 const OUT_WIDTH = 640;
@@ -329,6 +330,9 @@ function renderInvites(invites: { label: string; url: string }[]): void {
   );
 }
 
+// Duel Arena: the host's deck is player 1's.
+const arena = mountArena($("arena"), 0, (choice) => send(choice));
+
 socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
   if (typeof event.data !== "string") {
     const kind = new Uint8Array(event.data, 0, 1)[0];
@@ -389,6 +393,12 @@ socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
     case "duel":
       duel = { inDuel: message.inDuel, turn: message.turn };
       showDuel();
+      break;
+    case "arena":
+      arena.update(message);
+      break;
+    case "arena-error":
+      arena.error(message.message);
       break;
   }
 };

@@ -63,6 +63,16 @@ S (Circle), Z (Square), A (Triangle), Q/W (L1/R1), E/R (L2/R2), Enter (Start)
 and Shift (Select). A controller works too when the page is opened through
 the tunnel's https link, and phones get an on-screen pad.
 
+### Duel Arena: 1v1 with any deck
+
+Both pages have a **Duel Arena** panel. Each player picks a premade deck
+(`decks/*.json`) or builds one from every card of the game, up to three
+copies of a card. Then the host chooses **2P DUEL** in the game. No save is
+asked for: the arena borrows one save of the host's for both sides and changes
+nothing in it. Start the game with `MEMORIES_MOD_DUEL_ARENA=1` as well, and
+the title puts **DUEL ARENA** first. How it works:
+[notes/duel-arena.md](../../notes/duel-arena.md).
+
 ### Options
 
 ```

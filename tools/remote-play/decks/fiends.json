@@ -1,0 +1,27 @@
+{
+    "name": "Demônios das Trevas",
+    "description": "Summoned Skull, Zoa e King of Yamimakai, fortalecidos por Yami e Dark Energy.",
+    "cards": {
+        "Summoned Skull": 3,
+        "Zera The Mant": 1,
+        "Zoa": 2,
+        "Chakra": 1,
+        "Bickuribox": 2,
+        "Soul Hunter": 2,
+        "Ushi Oni": 2,
+        "Fiend's Mirror": 2,
+        "King of Yamimakai": 3,
+        "Dragon Seeker": 2,
+        "Psycho-Puppet": 2,
+        "Dark Energy": 3,
+        "Yami": 3,
+        "Raigeki": 1,
+        "Dark Hole": 1,
+        "Swords of Revealing Light": 2,
+        "Crush Card": 1,
+        "Red Medicine": 2,
+        "Bear Trap": 2,
+        "Eternal Rest": 1,
+        "Fake Trap": 2
+    }
+}

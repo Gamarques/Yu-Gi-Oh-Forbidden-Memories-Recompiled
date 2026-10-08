@@ -24,6 +24,7 @@ import {
   KEYBOARD,
   keyboardBits,
 } from "../shared/pad.js";
+import { mountArena } from "./arena-ui.js";
 import { cameraShown, limitCameraBitrate, LocalMedia, mediaAvailable, Section, sectionOf, setButton } from "./media.js";
 
 const CONNECT_TIMEOUT_MS = 12000;
@@ -48,6 +49,9 @@ let duel: DuelState = { inDuel: false, turn: 0 };
 let hostMedia: MediaState = { camera: false, mic: false };
 const local = new LocalMedia();
 const peerCam = $<HTMLVideoElement>("peer-cam");
+// Duel Arena: the guest's deck is player 2's (the companion refuses it when
+// the host made the guest player 1).
+const arena = mountArena($("arena"), 1, (choice) => send(choice));
 let sentBits = -1;
 let sentAt = 0;
 const held = new Set<string>();
@@ -141,6 +145,7 @@ function onMessage(data: ArrayBuffer | string): void {
       showPlayer(message.port);
       $("join-form").hidden = true;
       $("play").hidden = false;
+      $("arena").hidden = false;
       status("Joined. Waiting for the host's picture...");
       transport("Connecting", "wait");
       send({ type: "media", ...local.state });
@@ -157,6 +162,12 @@ function onMessage(data: ArrayBuffer | string): void {
     case "peer-media":
       hostMedia = { camera: message.camera, mic: message.mic };
       showPeerCamera();
+      break;
+    case "arena":
+      arena.update(message);
+      break;
+    case "arena-error":
+      arena.error(message.message);
       break;
     case "rejected":
       status(message.reason);
@@ -192,6 +203,7 @@ function leave(why: string | null): void {
   if (relayUrl) URL.revokeObjectURL(relayUrl);
   relayUrl = null;
   $("play").hidden = true;
+  $("arena").hidden = true;
   $("join-form").hidden = false;
   $<HTMLButtonElement>("join").disabled = false;
   status(why ?? "Disconnected. You can join again.");

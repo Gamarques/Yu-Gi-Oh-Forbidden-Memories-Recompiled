@@ -28,6 +28,8 @@ import {
   type ServerToGuest,
   type ServerToHost,
 } from "../shared/messages.js";
+import type { ArenaSide } from "../shared/arena.js";
+import { deckProblem, type Arena } from "./cards.js";
 import { GameLink } from "./game-link.js";
 import { CAMERA_MAX_HEIGHT, CAMERA_MAX_WIDTH, OverlayMode } from "./game-protocol.js";
 
@@ -51,6 +53,7 @@ export interface CompanionOptions {
   root: string; // the package directory (public/ and dist/ under it)
   token?: string;
   log?: (line: string) => void;
+  arena?: Arena; // Duel Arena's cards and premade decks; none, no arena
 }
 
 export interface Companion {
@@ -99,6 +102,11 @@ function sameToken(given: unknown, token: string): boolean {
   const a = Buffer.from(given);
   const b = Buffer.from(token);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function cleanDeckName(name: unknown): string {
+  const text = typeof name === "string" ? name : "";
+  return text.normalize("NFC").replace(/[^\p{L}\p{N} _.'&\-]/gu, "").trim().slice(0, 40) || "Deck";
 }
 
 export function cleanName(name: unknown): string {
@@ -156,6 +164,13 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
   const files = (page: string) => async (request: http.IncomingMessage, response: http.ServerResponse) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     let file: string | null = null;
+    if (url.pathname === "/api/arena" && request.method === "GET") {
+      // Duel Arena: the cards a deck may hold and the premade decks.
+      const body = JSON.stringify(options.arena ? { cards: options.arena.cards, decks: options.arena.decks } : { cards: [], decks: [] });
+      response.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8" });
+      response.end(body);
+      return;
+    }
     if (url.pathname === "/") file = path.join(options.root, "public", page);
     else if (/^\/(style\.css|pcm-worklet\.js)$/.test(url.pathname)) file = path.join(options.root, "public", url.pathname);
     else if (/^\/js\/(web|shared)\/[a-z0-9-]+\.js$/.test(url.pathname))
@@ -234,6 +249,31 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     if (port === 1) game.setPresence(1, held);
   };
 
+  // --- Duel Arena: each side's deck, sent to the game (arena.h) ---
+  const arenaSides: [ArenaSide, ArenaSide] = [
+    { ready: false, deckName: "" },
+    { ready: false, deckName: "" },
+  ];
+  const arenaStatus = () => ({ type: "arena" as const, sides: arenaSides, available: !!options.arena && game.supportsArena });
+  const sendArena = () => {
+    toHost(arenaStatus());
+    toGuest(arenaStatus());
+  };
+  function setArena(side: 0 | 1, name: string, cards: number[] | null): void {
+    arenaSides[side] = cards ? { ready: true, deckName: name } : { ready: false, deckName: "" };
+    game.setArenaDeck(side, cards);
+    sendArena();
+    log(cards ? `arena: player ${side + 1} plays "${name}"` : `arena: player ${side + 1} has no deck`);
+  }
+  // A page's choice for its side; the reply goes to that page only.
+  function chooseArena(side: 0 | 1, name: unknown, cards: unknown, reply: (message: string) => void): void {
+    if (!options.arena) return reply("Duel Arena is off: the companion found no card catalog.");
+    if (cards === null) return setArena(side, "", null);
+    const problem = deckProblem(cards, options.arena.byId);
+    if (problem) return reply(problem);
+    setArena(side, cleanDeckName(name), cards as number[]);
+  }
+
   function leaveGuest(why: string): void {
     if (!guest) return;
     const leaving = guest;
@@ -241,6 +281,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     holdPort(guestPort, false);
     guestMedia = { camera: false, mic: false };
     game.setCamera(0, 0, new Uint8Array(0));
+    if (arenaSides[1].ready) setArena(1, "", null);
     toHost({ type: "guest-left" });
     if (leaving.socket.readyState === WebSocket.OPEN) leaving.socket.close(1000, why);
     log(`the guest (${leaving.name}) left: ${why}`);
@@ -253,6 +294,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     sendConfig();
     toHost({ type: "game", connected: game.connected });
     toHost({ type: "duel", ...duel });
+    toHost(arenaStatus());
     if (guest) {
       toHost({ type: "guest-joined", name: guest.name }); // a reloaded host page renegotiates
       toHost({ type: "peer-media", ...guestMedia });
@@ -288,6 +330,8 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
           if (guest) holdPort(guestPort, false);
           guestPort = port;
           if (guest) holdPort(guestPort, true);
+          // The arena's player 2 is the guest: as player 1 they have no deck of their own.
+          if (port === 0 && arenaSides[1].ready) setArena(1, "", null);
           toHost({ type: "guest-port", port });
           toGuest({ type: "player", port });
           log(`the guest now plays as player ${port + 1}`);
@@ -302,6 +346,9 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
           break;
         case "overlay":
           if (message.mode in OVERLAY_MODES) game.setOverlay(OVERLAY_MODES[message.mode]);
+          break;
+        case "arena-deck":
+          chooseArena(0, message.name, message.cards, (text) => toHost({ type: "arena-error", message: text }));
           break;
         case "kick":
           if (guest) {
@@ -344,6 +391,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
         toGuest({ type: "joined", iceServers: options.iceServers, port: guestPort });
         toGuest({ type: "duel", ...duel });
         toGuest({ type: "peer-media", ...hostMedia });
+        toGuest(arenaStatus());
         holdPort(guestPort, true);
         toHost({ type: "guest-joined", name: joined.name });
         log(`the guest (${joined.name}) joined as player ${guestPort + 1}`);
@@ -366,6 +414,13 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
             game.setPad(guestPort, message.bits);
             toHost({ type: "guest-pad", bits: message.bits & 0xffff });
           }
+          break;
+        case "arena-deck":
+          if (guestPort !== 1) {
+            toGuest({ type: "arena-error", message: "The host made you player 1: the arena's decks are for player 2." });
+            break;
+          }
+          chooseArena(1, message.name, message.cards, (text) => toGuest({ type: "arena-error", message: text }));
           break;
         case "media":
           guestMedia = mediaState(message);
@@ -401,6 +456,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
   game.on("connected", (protocol, audioRate) => {
     log(`game connected (protocol ${protocol}, sound at ${audioRate} Hz)`);
     toHost({ type: "game", connected: true, protocol, audioRate });
+    sendArena();
   });
   game.on("disconnected", () => {
     log("game disconnected; waiting for it");

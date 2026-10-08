@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { loadArena, type Arena } from "./cards.js";
 import { startCompanion } from "./companion.js";
 import { DEFAULT_GAME_PORT } from "./game-protocol.js";
 import { startTunnel, type Tunnel } from "./tunnel.js";
@@ -21,6 +22,8 @@ const USAGE = `Usage: npm start -- [options]
   --turn-user <name>    its user name
   --turn-pass <secret>  its password
   --cloudflared <path>  where cloudflared is, if not on the PATH
+  --cards <csv>         Duel Arena's card list (default: notes/card-catalog.csv)
+  --decks <folder>      Duel Arena's premade decks (default: decks/ here)
   --no-open             do not open the host page in the browser
   -h, --help            this text`;
 
@@ -49,6 +52,8 @@ async function main(): Promise<void> {
       "turn-user": { type: "string" },
       "turn-pass": { type: "string" },
       cloudflared: { type: "string", default: "cloudflared" },
+      cards: { type: "string" },
+      decks: { type: "string" },
       "no-open": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -68,7 +73,18 @@ async function main(): Promise<void> {
   if (values.turn) iceServers.push({ urls: values.turn, username: values["turn-user"], credential: values["turn-pass"] });
 
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+  let arena: Arena | undefined;
+  try {
+    arena = await loadArena(
+      values.cards ?? path.resolve(root, "../../notes/card-catalog.csv"),
+      values.decks ?? path.join(root, "decks"),
+      (line) => console.log(line),
+    );
+  } catch (error) {
+    console.log(`Duel Arena is off: ${(error as Error).message}`);
+  }
   const companion = await startCompanion({
+    arena,
     gamePort: port("game-port", values["game-port"]),
     hostPort: port("host-port", values["host-port"]),
     publicPort: port("public-port", values["public-port"]),
