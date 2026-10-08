@@ -72,12 +72,20 @@ export function overlayMessage(mode: OverlayMode): Buffer {
   return encodeMessage(GameMessage.Overlay, Uint8Array.of(mode));
 }
 
-// A Duel Arena deck for side 0 or 1 (forty ids), or none.
-export function arenaDeckMessage(side: 0 | 1, ids: readonly number[] | null): Buffer {
-  const payload = Buffer.alloc(2 + (ids ? ids.length * 2 : 0));
+// A Duel Arena deck for side 0 or 1 (forty ids) and the player's name, or
+// none. The game keeps letters and digits of the name, the first six.
+export function arenaDeckMessage(side: 0 | 1, ids: readonly number[] | null, name = ""): Buffer {
+  // Accents off ("João" is "Joao"), then plain ASCII.
+  const ascii = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "");
+  const label = ids ? Buffer.from(ascii.slice(0, 32), "ascii") : Buffer.alloc(0);
+  const payload = Buffer.alloc(2 + (ids ? ids.length * 2 + 1 + label.length : 0));
   payload.writeUInt8(side, 0);
   payload.writeUInt8(ids ? ids.length : 0, 1);
   ids?.forEach((id, i) => payload.writeUInt16LE(id, 2 + i * 2));
+  if (ids) {
+    payload.writeUInt8(label.length, 2 + ids.length * 2);
+    label.copy(payload, 3 + ids.length * 2);
+  }
   return encodeMessage(GameMessage.ArenaDeck, payload);
 }
 

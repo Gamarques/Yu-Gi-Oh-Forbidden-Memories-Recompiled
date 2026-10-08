@@ -42,7 +42,7 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
   private divisor = 2;
   private overlay: OverlayMode = OverlayMode.MyTurn;
   private protocol = 0;
-  private readonly arena: [number[] | null, number[] | null] = [null, null];
+  private readonly arena: [{ ids: number[]; name: string } | null, { ids: number[]; name: string } | null] = [null, null];
 
   constructor(
     private readonly port: number,
@@ -107,9 +107,9 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
 
   // A Duel Arena deck for a side, or none (protocol 3 and later; kept and
   // sent again whenever the game comes back).
-  setArenaDeck(side: 0 | 1, ids: readonly number[] | null): void {
-    this.arena[side] = ids ? [...ids] : null;
-    if (this.ready && this.protocol >= 3) this.send(arenaDeckMessage(side, ids));
+  setArenaDeck(side: 0 | 1, ids: readonly number[] | null, name = ""): void {
+    this.arena[side] = ids ? { ids: [...ids], name } : null;
+    if (this.ready && this.protocol >= 3) this.send(arenaDeckMessage(side, ids, name));
   }
 
   get supportsArena(): boolean {
@@ -154,7 +154,10 @@ export class GameLink extends EventEmitter<GameLinkEvents> {
         this.protocol = payload.readUInt32LE(0);
         if (this.protocol >= 2) this.send(overlayMessage(this.overlay));
         if (this.protocol >= 3) {
-          for (const side of [0, 1] as const) if (this.arena[side]) this.send(arenaDeckMessage(side, this.arena[side]));
+          for (const side of [0, 1] as const) {
+            const deck = this.arena[side];
+            if (deck) this.send(arenaDeckMessage(side, deck.ids, deck.name));
+          }
         }
         // The game starts every companion afresh: tell it where we are.
         this.send(rateMessage(this.divisor));

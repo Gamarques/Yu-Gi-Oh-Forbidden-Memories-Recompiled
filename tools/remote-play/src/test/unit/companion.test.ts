@@ -233,9 +233,16 @@ test("the duel, cameras and microphones are passed on", async () => {
   host.send(JSON.stringify({ type: "overlay", mode: "my-turn" }));
   await until(() => game.overlayMode === 1);
 
-  // The guest's camera off, or the guest gone: the game lets the picture go.
+  // The guest's camera off, or the guest gone: the game lets the picture go,
+  // and a late frame from the host page does not bring it back.
   guest.send(JSON.stringify({ type: "media", camera: false, mic: false }));
   await until(() => game.camera.width === 0);
+  const late = game.cameraFrames;
+  host.send(picture);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(game.cameraFrames, late);
+  guest.send(JSON.stringify({ type: "media", camera: true, mic: false }));
+  await until(() => inbox.get(host)!.some((m) => m.type === "peer-media" && m.camera === true));
   host.send(picture);
   await until(() => game.camera.width === 160);
   guest.close();
@@ -276,6 +283,11 @@ test("Duel Arena: each side's deck reaches the game", async () => {
   assert.deepEqual((seen.sides as { ready: boolean }[]).map((side) => side.ready), [true, false]);
   guest.send(JSON.stringify({ type: "arena-deck", name: "<Magos>", cards: spellcasters.cards }));
   await until(() => game.arenaDecks[1]?.join() === spellcasters.cards.join());
+  // The names the duel shows: the guest's join name, the host's default.
+  assert.equal(game.arenaNames[1], "Bakura");
+  assert.equal(game.arenaNames[0], "Host");
+  host.send(JSON.stringify({ type: "arena-deck", name: "Dragões", cards: dragons.cards, player: "Gabriel" }));
+  await until(() => game.arenaNames[0] === "Gabriel");
   await until(() =>
     inbox.get(host)!.some((m) => m.type === "arena" && (m.sides as { deckName: string }[])[1]?.deckName === "Magos"),
   );

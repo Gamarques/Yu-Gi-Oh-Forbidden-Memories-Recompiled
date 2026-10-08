@@ -30,6 +30,9 @@ static struct {
     SaveSlotInfo slots[SAVE_SLOT_COUNT];
 } menu = {VIEW_CLOSED, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", NULL, NULL, 0, -1, {-1, -1}, 0, {{0}}};
 
+/* The arena builds the state the game loads: one size for both. */
+typedef char ArenaStateSizeMatches[ARENA_STATE_SIZE == SAVE_SLOT_STATE_SIZE ? 1 : -1];
+
 static SaveSlotCheck check;
 static int shown_rows = SAVE_SLOT_COUNT; /* how many rows the last draw had room for */
 /* Under a failed save's message: where and why (SaveSlots_LastError). Kept
@@ -62,9 +65,7 @@ static int selectable(int slot)
     const SaveSlotInfo *info = &menu.slots[slot];
     if (menu.step == SAVE_MENU_SAVE) return 1;
     if (info->status != SAVE_SLOT_USED) return 0;
-    /* An arena player 2 may share player 1's save: the deck is the arena's
-     * and the duelist code is changed (arena.h). */
-    return !(menu.step == SAVE_MENU_LOAD_PAIR && menu.side == 1 && slot == menu.pair_slot[0] && !Arena_Active(1));
+    return !(menu.step == SAVE_MENU_LOAD_PAIR && menu.side == 1 && slot == menu.pair_slot[0]);
 }
 
 static void show_message(int after, int waits, const char *format, int slot)
@@ -175,7 +176,6 @@ static int load(int slot)
         return 0;
     }
     if (menu.step == SAVE_MENU_LOAD_PAIR) {
-        Arena_ApplyPairLoad(menu.side, menu.buffer);
         menu.pair_slot[menu.side] = slot;
     } else {
         menu.current_slot = slot;
@@ -238,13 +238,19 @@ int SaveMenu_Poll(unsigned pressed, int channel, int *sound, SaveSlotCheck valid
             menu.started = 1;
             return close_with(write_pair());
         }
-        start(channel);
-        /* Duel Arena: a side with an arena deck takes the newest save
-         * without asking (arena.h). */
-        if (menu.step == SAVE_MENU_LOAD_PAIR && Arena_Active(menu.side) && menu.view == VIEW_LIST &&
-            selectable(menu.cursor)) {
-            return load(menu.cursor);
+        /* Duel Arena: a side with an arena deck needs no save. The game gets
+         * the state the arena builds, and no menu opens (arena.h). */
+        if (menu.step == SAVE_MENU_LOAD_PAIR && menu.size == SAVE_SLOT_STATE_SIZE) {
+            int side = channel >> 4 ? 1 : 0;
+            if (Arena_Active(side)) {
+                menu.started = 1;
+                menu.side = side;
+                if (side == 0) menu.pair_slot[0] = menu.pair_slot[1] = -1;
+                Arena_BuildState(side, menu.buffer);
+                return close_with(1);
+            }
         }
+        start(channel);
         return 0;
     }
     switch (menu.view) {

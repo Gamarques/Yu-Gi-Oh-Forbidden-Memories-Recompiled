@@ -100,15 +100,19 @@ export function mountArena(root: HTMLElement, mySide: 0 | 1, send: (choice: Aren
   const copy = element("button", { type: "button", textContent: "Copy code" });
   const paste = element("button", { type: "button", textContent: "Use code" });
   const takeBack = element("button", { type: "button", id: "arena-take-back", textContent: "Take my deck back", hidden: true });
+  // The name the duel shows: the host types theirs; the guest's is the one
+  // they joined with.
+  const player = element("input", { id: "arena-player", placeholder: "Your name", maxLength: 24, value: "Host" });
   const note = element("p", { className: "hint", id: "arena-error" });
 
   root.replaceChildren(
     element("h2", { textContent: "Duel Arena" }),
     element("p", {
       className: "muted",
-      textContent: `Choose a deck for 2P DUEL: any card of the game, up to ${ARENA_COPIES_MAX} copies. When both players are ready, the host picks 2P DUEL in the game; no save needs choosing.`,
+      textContent: `Choose a deck: any card of the game, up to ${ARENA_COPIES_MAX} copies. No save is needed. When both players are ready, the game goes to the duel by itself (with MEMORIES_ARENA=1) or the host picks 2P DUEL; the host starts it from the life points screen.`,
     }),
     element("div", { className: "row" }, ...status, takeBack),
+    ...(mySide === 0 ? [element("div", { className: "row" }, element("label", {}, "Your name in the duel ", player))] : []),
     element("div", { className: "row" }, element("label", {}, "Premade ", premadeSelect), playPremade),
     premadeAbout,
     element(
@@ -203,7 +207,7 @@ export function mountArena(root: HTMLElement, mySide: 0 | 1, send: (choice: Aren
     const problem = deckProblem(ids, byId);
     if (problem) return error(problem);
     error("");
-    send({ type: "arena-deck", name: deckName, cards: ids });
+    send({ type: "arena-deck", name: deckName, cards: ids, player: player.value });
   }
 
   function showAbout(): void {

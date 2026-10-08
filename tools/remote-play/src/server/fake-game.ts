@@ -51,6 +51,7 @@ export class FakeGame extends EventEmitter<FakeGameEvents> {
   cameraFrames = 0;
   // Duel Arena: the deck each side would be loaded with (arena.h).
   readonly arenaDecks: [number[] | null, number[] | null] = [null, null];
+  readonly arenaNames: [string, string] = ["", ""];
   camera = { width: 0, height: 0 };
   private sentDuel = -1;
 
@@ -133,6 +134,8 @@ export class FakeGame extends EventEmitter<FakeGameEvents> {
       if (count === 0) this.arenaDecks[port as 0 | 1] = null;
       else if (count === 40 && payload.length >= 2 + 80) {
         this.arenaDecks[port as 0 | 1] = Array.from({ length: 40 }, (_, i) => payload.readUInt16LE(2 + i * 2));
+        const n = payload.length > 82 ? payload[82]! : 0;
+        this.arenaNames[port as 0 | 1] = payload.subarray(83, 83 + n).toString("ascii");
       }
     } else if (type === GameMessage.Overlay && payload.length >= 1) {
       this.overlayMode = payload[0]!;

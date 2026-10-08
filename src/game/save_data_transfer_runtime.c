@@ -23,6 +23,7 @@
 #include "pc/cards/cards.h"
 #include "pc/free_duel/duelists.h"
 #include "pc/saves/save_cards.h"
+#include "pc/saves/arena.h"
 #endif
 
 /* The complete single-player and two-player save-transfer runtime. The first
@@ -114,6 +115,16 @@ s32 SaveData_UpdateLoadPair(void)
         }
         return 0;
     case 1:
+#ifdef MEMORIES_PC
+        /* Duel Arena (pc/saves/arena.h): no card to put in, so no Cross to
+           wait for before a 2P DUEL's loads (D_8009B3C0 40, not TRADE's). */
+        if (D_8009B3C0 == 40 && Arena_Autostart()) {
+            SD_SEPlayFull(7);
+            D_8009B3EA = 2;
+            gMemCard_pDialogObject->field_60 = 0x400;
+            return 0;
+        }
+#endif
         if (gInput_wPad1Pressed & PAD_BUTTON_CANCEL) {
             SD_SEPlayFull(8);
             D_8009B3EA = 0x82;

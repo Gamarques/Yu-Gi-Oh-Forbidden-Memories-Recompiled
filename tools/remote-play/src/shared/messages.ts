@@ -57,8 +57,9 @@ export type ServerToHost =
 // refused deck, to the page that sent it.
 export type ArenaStatus = { type: "arena"; sides: [ArenaSide, ArenaSide]; available: boolean };
 export type ArenaError = { type: "arena-error"; message: string };
-// A page's deck for its own side, or null to take it back.
-export type ArenaChoice = { type: "arena-deck"; name: string; cards: number[] | null };
+// A page's deck for its own side, or null to take it back; `player` is the
+// name the duel shows for the host (the guest's is their join name).
+export type ArenaChoice = { type: "arena-deck"; name: string; cards: number[] | null; player?: string };
 
 export type HostToServer =
   | { type: "signal"; data: SignalData }

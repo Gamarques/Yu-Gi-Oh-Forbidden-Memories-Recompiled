@@ -268,47 +268,58 @@ int main(void)
     }
 #endif
 
-    /* Duel Arena: with a deck for each side, both sides load at once, with
-     * no menu, from the save in use; the decks are the arena's, player 2's
-     * duelist code is changed so one save serves both, and no file changes. */
+    /* Duel Arena: with a deck for each side, no menu opens and no file is
+     * read or written: each side gets a state of its own, all zeros but the
+     * deck, the name and a duelist code that differs between the sides. */
     {
         static unsigned char arena_left[SAVE_SLOT_STATE_SIZE], arena_right[SAVE_SLOT_STATE_SIZE];
-        static unsigned char file_before[2][SAVE_SLOT_FILE_SIZE], file_after[SAVE_SLOT_FILE_SIZE];
-        const unsigned char *saved;
-        int used;
+        static unsigned char file_before[SAVE_SLOT_FILE_SIZE], file_after[SAVE_SLOT_FILE_SIZE];
+        static const unsigned char yugi[12] = {0x82, 0x78, 0x82, 0x74, 0x82, 0x66, 0x82, 0x68, 0x82, 0x51, 0x81, 0x40};
         uint16_t one[ARENA_DECK_SIZE], two[ARENA_DECK_SIZE];
         FILE *decks;
+        int zero;
         for (i = 0; i < ARENA_DECK_SIZE; i++) {
             one[i] = (uint16_t)(1 + i);
             two[i] = (uint16_t)(700 + i % 20);
         }
-        read_image(0, file_before[0]);
-        read_image(1, file_before[1]);
+        read_image(0, file_before);
+        memset(arena_left, 0xEE, sizeof(arena_left));
         assert(Arena_SetDeck(0, one, ARENA_FROM_COMPANION) && Arena_SetDeck(1, two, ARENA_FROM_COMPANION));
+        Arena_SetName(0, "yugi-2!");
         assert(SaveMenu_Begin(SAVE_MENU_LOAD_PAIR, arena_left, NULL, sizeof(arena_left), NAME, sound));
         assert(poll(0, 0) == 1 && !SaveMenu_Active());
         assert(SaveMenu_Begin(SAVE_MENU_LOAD_PAIR, arena_right, NULL, sizeof(arena_right), NAME, sound));
         assert(poll(0, 0x10) == 1 && !SaveMenu_Active());
-        used = SaveMenu_PairSlot(0);
-        assert((used == 0 || used == 1) && SaveMenu_PairSlot(1) == used);
-        saved = file_before[used] + SAVE_SLOT_HEADER_SIZE;
+        assert(SaveMenu_PairSlot(0) == -1 && SaveMenu_PairSlot(1) == -1);
         for (i = 0; i < ARENA_DECK_SIZE; i++) {
             assert((arena_left[i * 2] | arena_left[i * 2 + 1] << 8) == one[i]);
             assert((arena_right[i * 2] | arena_right[i * 2 + 1] << 8) == two[i]);
         }
-        assert(!memcmp(arena_left + 0x334, saved + 0x334, 4) && memcmp(arena_left + 0x334, arena_right + 0x334, 4));
-        /* The rest is the save's. */
-        assert(!memcmp(arena_left + 80, saved + 80, 0x334 - 80) && !memcmp(arena_right + 80, saved + 80, 0x334 - 80));
-        for (i = 0; i < 2; i++) {
-            read_image(i, file_after);
-            assert(!memcmp(file_before[i], file_after, sizeof(file_after)));
+        assert(!memcmp(arena_left + ARENA_STATE_CODE_OFFSET, "ARN1", 4));
+        assert(!memcmp(arena_right + ARENA_STATE_CODE_OFFSET, "ARN2", 4));
+        /* YUGI2 in full-width Shift JIS, a full-width space after. */
+        assert(!memcmp(arena_left + ARENA_STATE_NAME_OFFSET, yugi, sizeof(yugi)));
+        assert(arena_right[ARENA_STATE_NAME_OFFSET] == 0x82 && arena_right[ARENA_STATE_NAME_OFFSET + 1] == 0x6F); /* P */
+        for (zero = 1, i = 80; i < SAVE_SLOT_STATE_SIZE; i++) {
+            if (i >= ARENA_STATE_CODE_OFFSET && i < ARENA_STATE_CODE_OFFSET + 4) continue;
+            if (i >= ARENA_STATE_NAME_OFFSET && i < ARENA_STATE_NAME_OFFSET + 2 * ARENA_NAME_CHARS) continue;
+            zero &= arena_left[i] == 0;
         }
+        assert(zero);
+        read_image(0, file_after);
+        assert(!memcmp(file_before, file_after, sizeof(file_after)));
 
         /* Not forty retail cards: refused, the old deck stays. */
         two[3] = 0;
         assert(!Arena_SetDeck(1, two, ARENA_FROM_COMPANION) && Arena_Active(1));
         two[3] = ARENA_CARD_MAX + 1;
         assert(!Arena_SetDeck(1, two, ARENA_FROM_COMPANION));
+        /* Autostart needs MEMORIES_ARENA and both decks. */
+        assert(!Arena_Autostart());
+        assert(!setenv("MEMORIES_ARENA", "1", 1));
+        assert(Arena_Autostart());
+        assert(Arena_SetDeck(0, NULL, ARENA_FROM_COMPANION) && !Arena_Autostart());
+        assert(!unsetenv("MEMORIES_ARENA"));
         /* The companion leaving clears its decks: the menu asks again. */
         Arena_ClearFrom(ARENA_FROM_COMPANION);
         assert(!Arena_Active(0) && !Arena_Active(1));

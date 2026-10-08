@@ -302,7 +302,8 @@ connected: two-player trades and duels),
 `MEMORIES_REMOTE_PLAY=1` (or a port number; a friend plays as player 2 from a
 browser through `tools/remote-play`, [Remote play](remote-play.md)),
 `MEMORIES_ARENA_DECKS=path` (the decks of a Duel Arena 2P DUEL, one line per
-side, [Duel Arena](duel-arena.md)),
+side) and `MEMORIES_ARENA=1` (with both decks in, the title goes to 2P DUEL by
+itself; [Duel Arena](duel-arena.md)),
 `MEMORIES_DEBUG_CHEST=N` (N of every card in the trunk),
 `MEMORIES_DEBUG_DECK="723-762"` (the deck, as ids and ranges repeated to
 forty) and `MEMORIES_DEBUG_STARCHIPS=N` (the balance, as Set StarChips puts

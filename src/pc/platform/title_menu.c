@@ -28,6 +28,7 @@
 #include "platform.h"
 #include "pc/guest/state.h"
 #include "pc/mods/mods.h"
+#include "pc/saves/arena.h"
 #include "types.h"
 #include "game/display_object.h"
 #include "game/display_object_helpers.h"
@@ -47,6 +48,15 @@ enum { MIDDLE = 0xA0, LEFT_OFF = -0xA0, RIGHT_OFF = 0x1E0, TICKS = 0x10, GHOSTS 
 enum { SE_MOVE = 6, SE_CHOOSE = 7, SE_BACK = 8, SE_BUZZ = 9 };
 /* The debug menu is Main_ApplyMenuSelection's `default`. */
 enum { DEBUG_SELECTION = 11 };
+/* 2P DUEL's entry (TitleConfig_EntryNames). */
+enum { DUEL_ENTRY = 2 };
+
+/* Duel Arena chose 2P DUEL on this visit to the title (arena.h), and the
+ * title's frames so far on it: it waits ARENA_TITLE_FRAMES (two seconds)
+ * first, a breath between two duels and never a fast loop. */
+static int arena_chosen;
+static unsigned arena_frames;
+enum { ARENA_TITLE_FRAMES = 120 };
 
 typedef struct {
     int x, level;
@@ -188,6 +198,8 @@ void TitleMenu_Opened(void)
 
 void TitleMenu_Closed(void)
 {
+    arena_chosen = 0;
+    arena_frames = 0;
     run.open = 0;
 }
 
@@ -274,11 +286,39 @@ static int waiting(void)
            !D_8018459D && run.leaving < 0 && !Menu_NoticeShown() && entry(base_of(menu_of(gMain_bMenuID)));
 }
 
+/* Duel Arena (arena.h): with both decks in, the presses a player would
+ * make -- Start on PUSH START BUTTON, then Cross on 2P DUEL -- made for
+ * them, once a visit to the title, so the game takes its own way there. */
+static void arena_autostart(void)
+{
+    int row;
+    if (arena_chosen || !run.open || Menu_NoticeShown() || !Arena_Autostart()) return;
+    if (arena_frames < ARENA_TITLE_FRAMES) {
+        arena_frames++;
+        return;
+    }
+    if (prompt_up()) {
+        gInput_wPad1Pressed |= PAD_BUTTON_START;
+        return;
+    }
+    if (!waiting() || menu_of(gMain_bMenuID) != 0 || (row = row_of(0, DUEL_ENTRY)) < 0) return;
+    arena_chosen = 1;
+    run.cursor[0] = row;
+    settle(0);
+    gInput_wPad1Pressed |= PAD_BUTTON_CROSS;
+    fprintf(stderr, "memories-pc: arena: both decks are in: on to 2P DUEL\n");
+}
+
 unsigned TitleMenu_Before(void)
 {
     static int notice;
-    unsigned short repeat = gInput_wPad1Repeat, pressed = gInput_wPad1Pressed;
-    int menu = menu_of(gMain_bMenuID), shown = config()->shown[menu], had = notice;
+    unsigned short repeat, pressed;
+    int menu, shown, had = notice;
+    arena_autostart();
+    repeat = gInput_wPad1Repeat;
+    pressed = gInput_wPad1Pressed;
+    menu = menu_of(gMain_bMenuID);
+    shown = config()->shown[menu];
     /* A notice has the pad, and the frame it closes on too: the press that
      * closed it is not a choice. */
     notice = Menu_NoticeShown();

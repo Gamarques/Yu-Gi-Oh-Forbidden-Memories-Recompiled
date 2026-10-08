@@ -259,19 +259,19 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
     toHost(arenaStatus());
     toGuest(arenaStatus());
   };
-  function setArena(side: 0 | 1, name: string, cards: number[] | null): void {
+  function setArena(side: 0 | 1, name: string, cards: number[] | null, player = ""): void {
     arenaSides[side] = cards ? { ready: true, deckName: name } : { ready: false, deckName: "" };
-    game.setArenaDeck(side, cards);
+    game.setArenaDeck(side, cards, player);
     sendArena();
     log(cards ? `arena: player ${side + 1} plays "${name}"` : `arena: player ${side + 1} has no deck`);
   }
   // A page's choice for its side; the reply goes to that page only.
-  function chooseArena(side: 0 | 1, name: unknown, cards: unknown, reply: (message: string) => void): void {
+  function chooseArena(side: 0 | 1, name: unknown, cards: unknown, player: string, reply: (message: string) => void): void {
     if (!options.arena) return reply("Duel Arena is off: the companion found no card catalog.");
     if (cards === null) return setArena(side, "", null);
     const problem = deckProblem(cards, options.arena.byId);
     if (problem) return reply(problem);
-    setArena(side, cleanDeckName(name), cards as number[]);
+    setArena(side, cleanDeckName(name), cards as number[], player);
   }
 
   function leaveGuest(why: string): void {
@@ -305,7 +305,9 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
         const bytes = data as Buffer;
         if (bytes[0] === StreamKind.RelayFrame && guest?.relay && guest.socket.bufferedAmount < GUEST_BACKLOG) {
           guest.socket.send(bytes);
-        } else if (guest && bytes[0] === StreamKind.CameraFrame && bytes.length >= 5) {
+        } else if (guest && guestMedia.camera && bytes[0] === StreamKind.CameraFrame && bytes.length >= 5) {
+          // Only while the guest has their camera on: a frame the host page
+          // sent before it heard "off" must not bring the picture back.
           // The guest's camera, as the host page drew it, for the game's window.
           const width = bytes.readUInt16LE(1);
           const height = bytes.readUInt16LE(3);
@@ -348,7 +350,13 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
           if (message.mode in OVERLAY_MODES) game.setOverlay(OVERLAY_MODES[message.mode]);
           break;
         case "arena-deck":
-          chooseArena(0, message.name, message.cards, (text) => toHost({ type: "arena-error", message: text }));
+          chooseArena(
+            0,
+            message.name,
+            message.cards,
+            typeof message.player === "string" && message.player.trim() ? cleanName(message.player) : "Host",
+            (text) => toHost({ type: "arena-error", message: text }),
+          );
           break;
         case "kick":
           if (guest) {
@@ -420,7 +428,7 @@ export async function startCompanion(options: CompanionOptions): Promise<Compani
             toGuest({ type: "arena-error", message: "The host made you player 1: the arena's decks are for player 2." });
             break;
           }
-          chooseArena(1, message.name, message.cards, (text) => toGuest({ type: "arena-error", message: text }));
+          chooseArena(1, message.name, message.cards, joined.name, (text) => toGuest({ type: "arena-error", message: text }));
           break;
         case "media":
           guestMedia = mediaState(message);

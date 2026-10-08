@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  arenaDeckMessage,
   cameraMessage,
   encodeMessage,
   GameMessage,
@@ -40,4 +41,9 @@ test("the companion's messages match remote_play.h", () => {
   assert.deepEqual([...cameraMessage(0, 0, new Uint8Array(0))], [19, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0]);
   assert.throws(() => cameraMessage(321, 1, new Uint8Array(642)));
   assert.throws(() => cameraMessage(2, 2, new Uint8Array(3)));
+  const deck = arenaDeckMessage(1, Array.from({ length: 40 }, () => 7), "João!");
+  assert.equal(deck.readUInt32LE(4), 2 + 80 + 1 + 5);
+  assert.deepEqual([...deck.subarray(8, 12)], [1, 40, 7, 0]);
+  assert.equal(deck.subarray(8 + 82).toString("latin1"), "\u0005Joao!");
+  assert.deepEqual([...arenaDeckMessage(0, null, "x")], [21, 0, 0, 0, 2, 0, 0, 0, 0, 0]);
 });

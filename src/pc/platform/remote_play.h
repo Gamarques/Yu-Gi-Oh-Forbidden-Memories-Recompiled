@@ -39,8 +39,9 @@
  *                           default: while you prepare your move, you see
  *                           who you play against), 2 always in a duel
  *     REMOTE_PLAY_ARENA_DECK  u8 side (0 or 1), u8 count (40, or 0 to clear),
- *                           then count u16 card ids: the Duel Arena deck that
- *                           side's 2P DUEL save is loaded with (arena.h);
+ *                           then count u16 card ids, then optionally u8 n and
+ *                           n bytes of the player's name (ASCII): the Duel
+ *                           Arena deck that side's 2P DUEL is dealt (arena.h);
  *                           cleared when the companion leaves */
 #include <stddef.h>
 #include <stdint.h>

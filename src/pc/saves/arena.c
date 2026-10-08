@@ -4,11 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Changes the side-2 copy's duelist code, so it never equals side 1's. */
-#define ARENA_CODE_MASK 0x414E5241u /* "ARNA" */
-
 static uint16_t decks[2][ARENA_DECK_SIZE];
 static int sources[2]; /* 0: no deck */
+static char names[2][ARENA_NAME_CHARS + 1];
 static int file_read;
 
 static int valid(const uint16_t *ids)
@@ -31,6 +29,20 @@ int Arena_SetDeck(int side, const uint16_t *ids, int source)
     memcpy(decks[side], ids, sizeof(decks[side]));
     sources[side] = source;
     return 1;
+}
+
+/* Letters (upper case) and digits only: the characters every name the
+ * game shows is made of. */
+void Arena_SetName(int side, const char *name)
+{
+    int kept = 0;
+    if (side < 0 || side > 1) return;
+    for (; name && *name && kept < ARENA_NAME_CHARS; name++) {
+        char c = *name;
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) names[side][kept++] = c;
+    }
+    names[side][kept] = '\0';
 }
 
 void Arena_ClearFrom(int source)
@@ -80,23 +92,48 @@ int Arena_Active(int side)
     return (side == 0 || side == 1) && sources[side] != 0;
 }
 
-void Arena_ApplyPairLoad(int side, unsigned char *state)
+int Arena_Autostart(void)
 {
+    const char *on = getenv("MEMORIES_ARENA");
+    return on && *on && *on != '0' && Arena_Active(0) && Arena_Active(1);
+}
+
+/* One character in Shift JIS's full-width forms, as the game keeps names:
+ * A-Z from 0x8260, 0-9 from 0x824F; anything else a full-width space. */
+static void put_sjis(unsigned char *at, char c)
+{
+    unsigned code = c >= 'A' && c <= 'Z' ? 0x8260u + (unsigned)(c - 'A')
+                    : c >= '0' && c <= '9' ? 0x824Fu + (unsigned)(c - '0')
+                                           : 0x8140u;
+    at[0] = (unsigned char)(code >> 8);
+    at[1] = (unsigned char)code;
+}
+
+void Arena_BuildState(int side, unsigned char *state)
+{
+    static const char *const fallback[2] = {"PLAYR1", "PLAYR2"};
+    const char *name;
+    uint32_t code;
     int i;
-    if (!state || !Arena_Active(side)) return;
+    if (!state || side < 0 || side > 1) return;
+    memset(state, 0, ARENA_STATE_SIZE);
     /* The deck: forty little-endian halfwords at the start of the state. */
     for (i = 0; i < ARENA_DECK_SIZE; i++) {
         state[ARENA_STATE_DECK_OFFSET + i * 2] = (unsigned char)decks[side][i];
         state[ARENA_STATE_DECK_OFFSET + i * 2 + 1] = (unsigned char)(decks[side][i] >> 8);
     }
-    if (side == 1) {
-        for (i = 0; i < 4; i++) state[ARENA_STATE_CODE_OFFSET + i] ^= (unsigned char)(ARENA_CODE_MASK >> (8 * i));
+    code = ARENA_CODE_BASE + ((uint32_t)side << 24);
+    for (i = 0; i < 4; i++) state[ARENA_STATE_CODE_OFFSET + i] = (unsigned char)(code >> (8 * i));
+    name = names[side][0] ? names[side] : fallback[side];
+    for (i = 0; i < ARENA_NAME_CHARS; i++) {
+        put_sjis(state + ARENA_STATE_NAME_OFFSET + i * 2, i < (int)strlen(name) ? name[i] : ' ');
     }
-    fprintf(stderr, "memories-pc: arena: player %d plays the arena deck\n", side + 1);
+    fprintf(stderr, "memories-pc: arena: player %d plays the arena deck as %s\n", side + 1, name);
 }
 
 void Arena_Reset(void)
 {
     sources[0] = sources[1] = 0;
+    names[0][0] = names[1][0] = '\0';
     file_read = 0;
 }

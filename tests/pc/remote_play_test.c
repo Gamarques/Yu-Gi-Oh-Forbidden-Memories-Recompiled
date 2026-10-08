@@ -226,6 +226,18 @@ int main(void)
         send_message(companion, REMOTE_PLAY_ARENA_DECK, deck, sizeof(deck));
         frame(0, 0, 0, 0, 0);
         assert(Arena_Active(1));
+        /* With the player's name after the cards. */
+        {
+            static unsigned char named[2 + ARENA_DECK_SIZE * 2 + 1 + 5], state[ARENA_STATE_SIZE];
+            memcpy(named, deck, sizeof(deck));
+            named[sizeof(deck)] = 5;
+            memcpy(named + sizeof(deck) + 1, "Kaiba", 5);
+            send_message(companion, REMOTE_PLAY_ARENA_DECK, named, sizeof(named));
+            frame(0, 0, 0, 0, 0);
+            Arena_BuildState(1, state);
+            assert(state[0] == 7 && state[ARENA_STATE_NAME_OFFSET] == 0x82 && state[ARENA_STATE_NAME_OFFSET + 1] == 0x6A); /* K */
+            assert(state[ARENA_STATE_NAME_OFFSET + 8] == 0x82 && state[ARENA_STATE_NAME_OFFSET + 9] == 0x60); /* A */
+        }
         while (recv(companion, message, sizeof(message), MSG_DONTWAIT) > 0) {
         }
     }

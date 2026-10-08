@@ -234,6 +234,17 @@ static void handle_message(const unsigned char *message, const unsigned char *pa
             for (i = 0; i < ARENA_DECK_SIZE; i++) ids[i] = (uint16_t)(payload[2 + i * 2] | payload[3 + i * 2] << 8);
             if (!Arena_SetDeck(port, ids, ARENA_FROM_COMPANION)) {
                 fprintf(stderr, "memories-pc: remote play: arena deck for player %d refused\n", port + 1);
+            } else {
+                /* The player's name, after the cards when the companion sends one. */
+                char name[33] = "";
+                uint32_t at = 2 + ARENA_DECK_SIZE * 2;
+                if (length > at) {
+                    uint32_t n = payload[at] < length - at - 1 ? payload[at] : length - at - 1;
+                    if (n > sizeof(name) - 1) n = sizeof(name) - 1;
+                    memcpy(name, payload + at + 1, n);
+                    name[n] = '\0';
+                }
+                Arena_SetName(port, name);
             }
         }
         break;
